@@ -57,6 +57,7 @@ int read_cpu_stats(cpu_set *cpu) {
 
             cpu->cores = tmp;
         }
+
         cpu->cores[cpu->count++] = stats;
     }
    
@@ -92,5 +93,6 @@ void free_cpu_set(cpu_set *cpu) {
         free(cpu->cores);
         cpu->cores = NULL;
     }
+
     cpu->count = 0;
 }

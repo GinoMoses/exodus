@@ -5,7 +5,7 @@
 #include "cpu.h"
 #include "ui.h"
 
-int main() {
+int main(void) {
     cpu_set current = {0}, previous = {0};
 
     if (read_cpu_stats(&previous) != 0) {
@@ -14,6 +14,8 @@ int main() {
     
     size_t core_count = previous.count;
     double *cpu_usage = malloc(core_count * sizeof(double));
+
+    initialize_ui();
 
     while (1) {
         sleep(1);
@@ -27,7 +29,7 @@ int main() {
             cpu_usage[i] = calculate_core_usage(&current.cores[i], &previous.cores[i]);
         }
         
-        initialize_ui(cpu_usage, &core_count);
+        draw_cpu(cpu_usage, core_count);
 
         cpu_set temp = previous;
         previous = current;
@@ -35,6 +37,7 @@ int main() {
     }
 
     shutdown_ui();
+    
     free(cpu_usage);
     free_cpu_set(&current);
     free_cpu_set(&previous);
