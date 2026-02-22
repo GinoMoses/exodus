@@ -3,7 +3,7 @@
 
 #define CPU_USAGE_COLOR(p) ((p) < 50.0 ? 1 : ((p) < 80.0 ? 2 : 3)) 
 #define CPU_COLUMNS 4
-#define PERCENT_WIDTH 7
+#define PERCENT_WIDTH 7 
 #define BAR_BRACKETS 2
 #define CELL_PADDING 2
 #define START_Y 1
@@ -24,9 +24,15 @@ void initialize_ui(void) {
     start_color();
     use_default_colors();
 
+    // cpu bar colors
     init_pair(1, COLOR_GREEN, -1);
     init_pair(2, COLOR_YELLOW, -1);
     init_pair(3, COLOR_RED, -1);
+
+    // generic ui colors
+    init_pair(4, COLOR_BLUE, -1);
+    if (COLORS >= 256) init_pair(5, 245, -1); // gray
+    
 }
 
 static int get_label_width(size_t core_count) {
@@ -44,7 +50,9 @@ static int get_label_width(size_t core_count) {
 static void draw_bar(int y, int x, double cpu_usage, int bar_width) {
     int filled = (int)(cpu_usage / 100.0 * bar_width);
 
+    attron(COLOR_PAIR(5));
     mvaddch(y, x, '[');
+    attroff(COLOR_PAIR(5));
     
     for (int i = 0; i < bar_width; i++) {
         double pos_percent = (double)i / bar_width * 100.0;
@@ -55,24 +63,28 @@ static void draw_bar(int y, int x, double cpu_usage, int bar_width) {
         attroff(COLOR_PAIR(color));
     }
 
+    attron(COLOR_PAIR(5));
     addch(']');
+    attroff(COLOR_PAIR(5));
 }
 
 void draw_cpu(double *cpu_usage, size_t core_count) {
     erase();
 
-    int term_w;
-    getmaxyx(stdscr, term_w, term_w); 
+    int term_h, term_w;
+    getmaxyx(stdscr, term_h, term_w); 
+    (void)term_h; // unused
 
     if (core_count == 0) return;
 
     // can't do terminal UI for shit lmao
-    int label_width = get_label_width(core_count);
-    int fixed_width = label_width + PERCENT_WIDTH + BAR_BRACKETS + 1;
-    int column_width = term_w / CPU_COLUMNS;
-    int bar_width = column_width - fixed_width; 
+    int label_width     = get_label_width(core_count);
+    int fixed_width     = label_width + PERCENT_WIDTH + BAR_BRACKETS + 1;
+    int usable_width    = term_w - START_X - (CPU_COLUMNS - 1) * CELL_PADDING;
+    int column_width    = usable_width / CPU_COLUMNS;
+    int bar_width       = column_width - fixed_width; 
 
-    if (bar_width < 1) bar_width = 1;
+    if (bar_width < 0) bar_width = 0;
 
     int rows = (core_count + CPU_COLUMNS - 1) / CPU_COLUMNS;
 
@@ -82,11 +94,20 @@ void draw_cpu(double *cpu_usage, size_t core_count) {
 
         int y = START_Y + row;
         int x = START_X + col * column_width;
+      
+        int label_x = x; 
+        int bar_x = label_x + label_width;
+        int percent_x = bar_x + BAR_BRACKETS + bar_width + 1;  
         
-        mvprintw(y, x, "%*zu", label_width, i);
-        draw_bar(y, x + label_width, cpu_usage[i], bar_width);
-        mvprintw(y, x + label_width + bar_width + BAR_BRACKETS + 1, "%6.2f%%", cpu_usage[i]);
-    }
+        attron(COLOR_PAIR(4));
+        mvprintw(y, label_x, "%*zu", label_width, i+1);
+        attroff(COLOR_PAIR(4));
+        draw_bar(y, bar_x, cpu_usage[i], bar_width);
+        if (percent_x + PERCENT_WIDTH <= term_w) {
+            mvprintw(y, percent_x, "%6.2f%%", cpu_usage[i]);
     
+        }
+    }
+
     refresh();
 }
