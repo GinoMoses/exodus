@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-int read_cpu_stats(cpu_set *cpu) {
+int read_cpu_stats(cpu_set_t *cpu) {
     FILE *file = fopen("/proc/stat", "r");
 
     if(!file) {
@@ -13,7 +13,7 @@ int read_cpu_stats(cpu_set *cpu) {
 
     char line[256];   
     size_t capacity = 4; // initial capacity for 4 cores
-    cpu->cores = malloc(capacity * sizeof(cpu_core_stats));
+    cpu->cores = malloc(capacity * sizeof(cpu_core_stats_t));
     
     if (!cpu->cores) {
         perror("Memory allocation failed\n");
@@ -28,7 +28,7 @@ int read_cpu_stats(cpu_set *cpu) {
         if (line[3] == ' ') continue;
         
         unsigned int core_index;
-        cpu_core_stats stats;
+        cpu_core_stats_t stats;
 
         int scanned = sscanf(line, "cpu%u %llu %llu %llu %llu %llu %llu %llu %llu",
                 &core_index,
@@ -46,7 +46,7 @@ int read_cpu_stats(cpu_set *cpu) {
         // reallocate if more cores present
         if (cpu->count >= capacity) {
             capacity *= 2;
-            cpu_core_stats *tmp = realloc(cpu->cores, capacity * sizeof(cpu_core_stats));
+            cpu_core_stats_t *tmp = realloc(cpu->cores, capacity * sizeof(cpu_core_stats_t));
 
             if (!tmp) {
                 perror("Memory reallocation failed\n");
@@ -65,7 +65,7 @@ int read_cpu_stats(cpu_set *cpu) {
     return 0;
 }
 
-double calculate_core_usage(const cpu_core_stats *current, const cpu_core_stats *previous) {
+double calculate_core_usage(const cpu_core_stats_t *current, const cpu_core_stats_t *previous) {
     // sum of idle jiffies
     unsigned long long prev_idle = previous->idle + previous->iowait;
     unsigned long long curr_idle = current->idle + current->iowait;
@@ -88,7 +88,7 @@ double calculate_core_usage(const cpu_core_stats *current, const cpu_core_stats 
     return (double)(total_delta - idle_delta) / total_delta * 100.0;
 }
 
-void free_cpu_set(cpu_set *cpu) {
+void free_cpu_set(cpu_set_t *cpu) {
     if (cpu->cores) {
         free(cpu->cores);
         cpu->cores = NULL;

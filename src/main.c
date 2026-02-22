@@ -3,15 +3,22 @@
 #include <stdio.h>
 
 #include "cpu.h"
+#include "memory.h"
 #include "ui.h"
 
 int main(void) {
-    cpu_set current = {0}, previous = {0};
+    cpu_set_t current = {0}, previous = {0};
+    memory_stats_t memory = {0};
 
     if (read_cpu_stats(&previous) != 0) {
         return -1;
     }
-    
+
+    if (read_memory_stats(&memory) != 0) {
+        free_cpu_set(&previous);
+        return -1;
+    }
+     
     size_t core_count = previous.count;
     double *cpu_usage = malloc(core_count * sizeof(double));
 
@@ -29,9 +36,12 @@ int main(void) {
             cpu_usage[i] = calculate_core_usage(&current.cores[i], &previous.cores[i]);
         }
         
-        draw_cpu(cpu_usage, core_count);
+        int cpu_rows = draw_cpu(cpu_usage, core_count);
+        
+        read_memory_stats(&memory);
+        draw_memory(&memory, cpu_rows);
 
-        cpu_set temp = previous;
+        cpu_set_t temp = previous;
         previous = current;
         current = temp;
     }

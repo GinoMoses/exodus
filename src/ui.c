@@ -1,5 +1,8 @@
 #include <ncurses.h>
 #include <unistd.h>
+#include <string.h>
+
+#include "memory.h"
 
 #define CPU_USAGE_COLOR(p) ((p) < 50.0 ? 1 : ((p) < 80.0 ? 2 : 3)) 
 #define CPU_COLUMNS 4
@@ -68,14 +71,14 @@ static void draw_bar(int y, int x, double cpu_usage, int bar_width) {
     attroff(COLOR_PAIR(5));
 }
 
-void draw_cpu(double *cpu_usage, size_t core_count) {
+int draw_cpu(double *cpu_usage, size_t core_count) {
     erase();
 
     int term_h, term_w;
     getmaxyx(stdscr, term_h, term_w); 
     (void)term_h; // unused
 
-    if (core_count == 0) return;
+    if (core_count == 0) return 0;
 
     // can't do terminal UI for shit lmao
     int label_width     = get_label_width(core_count);
@@ -110,4 +113,42 @@ void draw_cpu(double *cpu_usage, size_t core_count) {
     }
 
     refresh();
+    return rows;
 }
+
+void draw_memory(const memory_stats_t *memory, int cpu_rows) { 
+    if (!memory || memory->total == 0) return;
+
+    int term_h, term_w;
+    getmaxyx(stdscr, term_h, term_w);
+    (void)term_h; // unused
+
+    int y = START_Y + cpu_rows + 1;
+
+    double percent = memory->total > 0 ? (double)memory->used / memory->total * 100.0 : 0.0;
+
+    int usable_width = term_w - START_X * 2;
+    
+    const char *label = "MEM";
+    int label_width = strlen(label);
+    
+    int fixed_width = label_width + 1 + PERCENT_WIDTH + BAR_BRACKETS + 1;
+    int bar_width = usable_width - fixed_width;
+
+    if (bar_width < 0) bar_width = 0;
+
+    int x = START_X;
+    int bar_x = x + label_width + 1;
+    int percent_x = bar_x + BAR_BRACKETS + bar_width + 1;
+
+    attron(COLOR_PAIR(4));
+    mvprintw(y, x, "%s", label);
+    attroff(COLOR_PAIR(4));
+    draw_bar(y, bar_x, percent, bar_width);
+    if (percent_x + PERCENT_WIDTH <= term_w) {
+        mvprintw(y, percent_x, "%6.2f%%", percent);
+    }
+
+    refresh();
+}
+
