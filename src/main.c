@@ -15,7 +15,6 @@ int main(void) {
     }
 
     if (read_memory_stats(&memory) != 0) {
-        free_cpu_set(&previous);
         return -1;
     }
      
@@ -23,6 +22,10 @@ int main(void) {
     double *cpu_usage = malloc(core_count * sizeof(double));
 
     initialize_ui();
+
+    // immidiately diplay UI with CPU values equal to 0
+    int cpu_rows = draw_cpu(cpu_usage, core_count);
+    draw_memory(&memory, cpu_rows);
 
     while (1) {
         sleep(1);
@@ -36,7 +39,7 @@ int main(void) {
             cpu_usage[i] = calculate_core_usage(&current.cores[i], &previous.cores[i]);
         }
         
-        int cpu_rows = draw_cpu(cpu_usage, core_count);
+        cpu_rows = draw_cpu(cpu_usage, core_count);
         
         read_memory_stats(&memory);
         draw_memory(&memory, cpu_rows);
