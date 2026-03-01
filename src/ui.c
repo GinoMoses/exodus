@@ -100,7 +100,7 @@ static void draw_memory_bar(int y, int x, const memory_stats_t *memory, int bar_
             addch('=');
             attroff(COLOR_PAIR(7));
         } else if (i < used_filled + buffer_filled + cache_filled) {
-            attron(COLOR_PAIR(2)); // yellow for cache
+            attron(COLOR_PAIR(2));
             addch('=');
             attroff(COLOR_PAIR(2));
         } else {
@@ -176,9 +176,9 @@ void draw_memory(const memory_stats_t *memory, int cpu_rows) {
     int fixed_width     = label_width + 1 + PERCENT_WIDTH + BAR_BRACKETS + 1;
     int bar_width       = usable_width - fixed_width;
     
-    int x           = START_X;
-    int bar_x       = x + label_width + 1;
-    int percent_x   = bar_x + BAR_BRACKETS + bar_width + 1;
+    int x               = START_X;
+    int bar_x           = x + label_width + 1;
+    int percent_x       = bar_x + BAR_BRACKETS + bar_width + 1;
 
     if (bar_width < 0) bar_width = 0;
     

@@ -3,7 +3,6 @@
 
 #include "memory.h"
 
-
 int read_memory_stats(memory_stats_t *memory) {
     if (!memory) {
         fprintf(stderr, "Invalid memory_stats_t pointer\n");
