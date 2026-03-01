@@ -36,6 +36,11 @@ void initialize_ui(void) {
     init_pair(4, COLOR_BLUE, -1);
     if (COLORS >= 256) init_pair(5, 245, -1); // gray
     
+    // memory bar colors
+    // reuse some from cpu
+    init_pair(6, COLOR_CYAN, -1);
+    init_pair(7, COLOR_MAGENTA, -1);
+
 }
 
 static int get_label_width(size_t core_count) {
@@ -64,6 +69,43 @@ static void draw_bar(int y, int x, double cpu_usage, int bar_width) {
         attron(COLOR_PAIR(color));
         addch(i < filled ? '=' : ' ');
         attroff(COLOR_PAIR(color));
+    }
+
+    attron(COLOR_PAIR(5));
+    addch(']');
+    attroff(COLOR_PAIR(5));
+}
+
+static void draw_memory_bar(int y, int x, const memory_stats_t *memory, int bar_width) {
+    // seperate function for memory to color buffers, cached, and used differently
+    double used_percent = memory->total > 0 ? (double)memory->used / memory->total * 100.0 : 0.0;
+    double buffer_percent = memory->total > 0 ? (double)memory->buffers / memory->total * 100.0 : 0.0;
+    double cache_percent = memory->total > 0 ? (double)memory->cached / memory->total * 100.0 : 0.0;
+
+    int used_filled = (int)(used_percent / 100.0 * bar_width);
+    int buffer_filled = (int)(buffer_percent / 100.0 * bar_width);
+    int cache_filled = (int)(cache_percent / 100.0 * bar_width);
+
+    attron(COLOR_PAIR(5));
+    mvaddch(y, x, '[');
+    attroff(COLOR_PAIR(5));
+
+    for (int i = 0; i < bar_width; i++) {
+        if (i < used_filled) {
+            attron(COLOR_PAIR(6));
+            addch('=');
+            attroff(COLOR_PAIR(6));
+        } else if (i < used_filled + buffer_filled) {
+            attron(COLOR_PAIR(7));
+            addch('=');
+            attroff(COLOR_PAIR(7));
+        } else if (i < used_filled + buffer_filled + cache_filled) {
+            attron(COLOR_PAIR(2)); // yellow for cache
+            addch('=');
+            attroff(COLOR_PAIR(2));
+        } else {
+            addch(' ');
+        }
     }
 
     attron(COLOR_PAIR(5));
@@ -126,25 +168,24 @@ void draw_memory(const memory_stats_t *memory, int cpu_rows) {
     int y = START_Y + cpu_rows + 1;
 
     double percent = memory->total > 0 ? (double)memory->used / memory->total * 100.0 : 0.0;
-
-    int usable_width = term_w - START_X * 2;
     
     const char *label = "MEM";
-    int label_width = strlen(label);
     
-    int fixed_width = label_width + 1 + PERCENT_WIDTH + BAR_BRACKETS + 1;
-    int bar_width = usable_width - fixed_width;
+    int usable_width    = term_w - START_X * 2;
+    int label_width     = strlen(label);
+    int fixed_width     = label_width + 1 + PERCENT_WIDTH + BAR_BRACKETS + 1;
+    int bar_width       = usable_width - fixed_width;
+    
+    int x           = START_X;
+    int bar_x       = x + label_width + 1;
+    int percent_x   = bar_x + BAR_BRACKETS + bar_width + 1;
 
     if (bar_width < 0) bar_width = 0;
-
-    int x = START_X;
-    int bar_x = x + label_width + 1;
-    int percent_x = bar_x + BAR_BRACKETS + bar_width + 1;
-
+    
     attron(COLOR_PAIR(4));
     mvprintw(y, x, "%s", label);
     attroff(COLOR_PAIR(4));
-    draw_bar(y, bar_x, percent, bar_width);
+    draw_memory_bar(y, bar_x, memory, bar_width);
     if (percent_x + PERCENT_WIDTH <= term_w) {
         mvprintw(y, percent_x, "%6.2f%%", percent);
     }
