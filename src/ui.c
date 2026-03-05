@@ -4,6 +4,8 @@
 
 #include "memory.h"
 
+// gotta split this file up at some point
+
 #define FULL_BLOCK ACS_BLOCK
 
 // unicode for borders
@@ -22,15 +24,18 @@
 #define START_Y 1
 #define START_X 2
 
+// window definitions
 static WINDOW *cpu_window = NULL;
 static WINDOW *memory_window = NULL;
+static WINDOW *network_window = NULL;
+static WINDOW *footer_window = NULL;
 
 void shutdown_ui(void) {
     if (cpu_window) delwin(cpu_window);
     if (memory_window) delwin(memory_window);
+    if (footer_window) delwin(footer_window);
     endwin();
 }
-
 
 static void create_cpu_window(size_t core_count) {
     int term_h, term_w;
@@ -55,9 +60,21 @@ static void create_memory_window(void) {
 
     int memory_height = 5;
     int memory_y = START_Y + cpu_win_h + 1;
+    int memory_width = (term_w - 4) / 2 - 1;
 
     if (memory_window) delwin(memory_window);
-    memory_window = newwin(memory_height, term_w - 4, memory_y, START_X);
+    memory_window = newwin(memory_height, memory_width, memory_y, START_X);
+}
+
+static void create_footer_window(void) {
+    int term_h, term_w;
+    getmaxyx(stdscr, term_h, term_w);
+
+    int footer_height = 3;
+    int footer_y = term_h - footer_height;
+
+    if (footer_window) delwin(footer_window);
+    footer_window = newwin(footer_height, term_w - 4, footer_y, START_X);
 }
 
 void initialize_ui(void) {
@@ -258,14 +275,22 @@ static void draw_memory(const memory_stats_t *memory) {
     mvwprintw(memory_window, y, info_x, "%s / %s", used_str, total_str);
 }
 
-void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory) {
-    // wclear(cpu_window);
-    // wclear(memory_window);
+static void draw_footer(void) {
+    if (!footer_window) {
+        create_footer_window();
+        box(footer_window, 0, 0);
+        mvwprintw(footer_window, 1, 2, "q: Quit");
+        wnoutrefresh(footer_window);
+    }
+}
 
+void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory) {
     draw_cpu(cpu_usage, core_count);
     draw_memory(memory);
+    draw_footer();
 
     wnoutrefresh(cpu_window);
     wnoutrefresh(memory_window);
+    // wnoutrefresh(footer_window); - not needed, content doesn't change
     doupdate();
 }
