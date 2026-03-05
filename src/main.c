@@ -44,9 +44,10 @@ int main(void) {
         read_memory_stats(&memory);
         draw_memory(&memory, cpu_rows);
 
-        cpu_set_t temp = previous;
+        free_cpu_set(&previous);
         previous = current;
-        current = temp;
+        current.cores = NULL; // prevent double free
+        current.count = 0;
     }
 
     shutdown_ui();

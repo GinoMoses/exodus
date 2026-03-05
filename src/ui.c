@@ -78,13 +78,9 @@ static void draw_bar(int y, int x, double cpu_usage, int bar_width) {
 
 static void draw_memory_bar(int y, int x, const memory_stats_t *memory, int bar_width) {
     // seperate function for memory to color buffers, cached, and used differently
-    double used_percent = memory->total > 0 ? (double)memory->used / memory->total * 100.0 : 0.0;
-    double buffer_percent = memory->total > 0 ? (double)memory->buffers / memory->total * 100.0 : 0.0;
-    double cache_percent = memory->total > 0 ? (double)memory->cached / memory->total * 100.0 : 0.0;
-
-    int used_filled = (int)(used_percent / 100.0 * bar_width);
-    int buffer_filled = (int)(buffer_percent / 100.0 * bar_width);
-    int cache_filled = (int)(cache_percent / 100.0 * bar_width);
+    double used_filled = memory->total > 0 ? (int)((double)memory->used / memory->total * bar_width) : 0.0;
+    double buffer_end = memory->total > 0 ? (int)((double)(memory->used + memory->buffers) / memory->total * bar_width) : 0.0;
+    double cache_end = memory->total > 0 ? (int)((double)(memory->used + memory->buffers + memory->cached) / memory->total * bar_width) : 0.0;
 
     attron(COLOR_PAIR(5));
     mvaddch(y, x, '[');
@@ -95,11 +91,11 @@ static void draw_memory_bar(int y, int x, const memory_stats_t *memory, int bar_
             attron(COLOR_PAIR(6));
             addch('=');
             attroff(COLOR_PAIR(6));
-        } else if (i < used_filled + buffer_filled) {
+        } else if (i < buffer_end) {
             attron(COLOR_PAIR(7));
             addch('=');
             attroff(COLOR_PAIR(7));
-        } else if (i < used_filled + buffer_filled + cache_filled) {
+        } else if (i < cache_end) {
             attron(COLOR_PAIR(2));
             addch('=');
             attroff(COLOR_PAIR(2));

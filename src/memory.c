@@ -21,6 +21,9 @@ int read_memory_stats(memory_stats_t *memory) {
     memory->buffers = 0;
     memory->cached = 0;
     memory->used = 0;
+    memory->available = 0;
+    memory->shmem = 0;
+    memory->sreclaimable = 0;
 
     char key[64];
     unsigned long long value;
@@ -31,8 +34,9 @@ int read_memory_stats(memory_stats_t *memory) {
         else if (strcmp(key, "MemFree:") == 0) memory->free = value;
         else if (strcmp(key, "Buffers:") == 0) memory->buffers = value;
         else if (strcmp(key, "Cached:") == 0) memory->cached = value;
-
-        if (memory->total && memory->free && memory->buffers && memory->cached) break;  
+        else if (strcmp(key, "Available:") == 0) memory->available = value;
+        else if (strcmp(key, "Shmem:") == 0) memory->shmem = value;
+        else if (strcmp(key, "SReclaimable:") == 0) memory->sreclaimable = value;
     }
 
     fclose(file);
@@ -40,7 +44,12 @@ int read_memory_stats(memory_stats_t *memory) {
     if (memory->total == 0) {
         fprintf(stderr, "Failed to read total memory from /proc/meminfo\n");
         return -1;
+    }  
+
+    if (memory->available > 0) {
+        memory->used = memory->total - memory->available;
     } else {
+        // fallback for kernels pre 3.14
         memory->used = memory->total - memory->free - memory->buffers - memory->cached;
     }
 

@@ -8,6 +8,9 @@ typedef struct {
     unsigned long long buffers;
     unsigned long long cached;
     unsigned long long used;
+    unsigned long long available;
+    unsigned long long shmem;
+    unsigned long long sreclaimable;
 } memory_stats_t;
 
 int read_memory_stats(memory_stats_t *memory);
