@@ -5,6 +5,7 @@
 #include "cpu.h"
 #include "memory.h"
 #include "ui.h"
+#include "input.h"
 
 int main(void) {
     cpu_set_t current = {0}, previous = {0};
@@ -19,16 +20,21 @@ int main(void) {
     }
      
     size_t core_count = previous.count;
-    double *cpu_usage = malloc(core_count * sizeof(double));
+    double *cpu_usage = calloc(core_count, sizeof(double));
 
     initialize_ui();
-
-    // immidiately diplay UI with CPU values equal to 0
-    int cpu_rows = draw_cpu(cpu_usage, core_count);
-    draw_memory(&memory, cpu_rows);
+    update_ui(cpu_usage, core_count, &memory);
 
     while (1) {
-        sleep(1);
+        // instead of sleep use time to check for input
+        for (size_t i = 0; i < 10; i++) {
+            usleep(100000);
+
+            input_action_t action = handle_input();
+            if (action == INPUT_QUIT) {
+                goto cleanup;
+            }
+        }
 
         if (read_cpu_stats(&current) != 0) {
             free(cpu_usage);
@@ -39,21 +45,21 @@ int main(void) {
             cpu_usage[i] = calculate_core_usage(&current.cores[i], &previous.cores[i]);
         }
         
-        cpu_rows = draw_cpu(cpu_usage, core_count);
-        
         read_memory_stats(&memory);
-        draw_memory(&memory, cpu_rows);
 
+        update_ui(cpu_usage, core_count, &memory);
+        
         free_cpu_set(&previous);
         previous = current;
-        current.cores = NULL; // prevent double free
+        current.cores = NULL;
         current.count = 0;
     }
 
-    shutdown_ui();
-    
-    free(cpu_usage);
-    free_cpu_set(&current);
-    free_cpu_set(&previous);
-    return 0;
+    cleanup:
+        free_cpu_set(&current);
+        free_cpu_set(&previous);
+        free(cpu_usage);
+        shutdown_ui();
+        return 0;
 }
+
