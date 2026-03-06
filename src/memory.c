@@ -24,6 +24,9 @@ int read_memory_stats(memory_stats_t *memory) {
     memory->available = 0;
     memory->shmem = 0;
     memory->sreclaimable = 0;
+    memory->swap_total = 0;
+    memory->swap_free = 0;
+    memory->swap_used = 0;
 
     char key[64];
     unsigned long long value;
@@ -37,6 +40,8 @@ int read_memory_stats(memory_stats_t *memory) {
         else if (strcmp(key, "Available:") == 0) memory->available = value;
         else if (strcmp(key, "Shmem:") == 0) memory->shmem = value;
         else if (strcmp(key, "SReclaimable:") == 0) memory->sreclaimable = value;
+        else if (strcmp(key, "SwapTotal:") == 0) memory->swap_total = value;
+        else if (strcmp(key, "SwapFree:") == 0) memory->swap_free = value;
     }
 
     fclose(file);
@@ -51,6 +56,10 @@ int read_memory_stats(memory_stats_t *memory) {
     } else {
         // fallback for kernels pre 3.14
         memory->used = memory->total - memory->free - memory->buffers - memory->cached;
+    }
+
+    if (memory->swap_total > 0) {
+        memory->swap_used = memory->swap_total - memory->swap_free;
     }
 
     return 0;

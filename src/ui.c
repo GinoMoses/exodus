@@ -185,6 +185,33 @@ static void draw_memory_bar(WINDOW *win, const memory_stats_t *memory, int bar_w
     }
 }
 
+static void draw_swap_bar(WINDOW *win, unsigned long long swap_total, unsigned long long swap_used, int bar_width) {
+    if (swap_total == 0) {
+        wattron(win, COLOR_PAIR(5));
+        
+        for (int i = 0; i < bar_width; i++) {
+            waddch(win, FULL_BLOCK);
+        }
+        
+        wattroff(win, COLOR_PAIR(5));
+        return;
+    }
+
+    int filled = swap_total > 0 ? (int)((double)swap_used / swap_total * bar_width) : 0;
+
+    for (int i = 0; i < bar_width; i++) {
+        if (i < filled) {
+            wattron(win, COLOR_PAIR(7));
+            waddch(win, FULL_BLOCK);
+            wattroff(win, COLOR_PAIR(7));
+        } else {
+            wattron(win, COLOR_PAIR(5));
+            waddch(win, FULL_BLOCK);
+            wattroff(win, COLOR_PAIR(5));
+        }
+    }
+}
+
 static void draw_titled_box(WINDOW *win, const char *title) {
     wattron(win, COLOR_PAIR(5));
     box(win, 0, 0);
@@ -290,6 +317,29 @@ static void draw_memory(const memory_stats_t *memory) {
 
     int info_x = bar_x + bar_brackets + bar_width + 1;
     mvwprintw(memory_window, y, info_x, "%s / %s", used_str, total_str);
+
+    y++;
+
+    char swap_used_str[16], swap_total_str[16];
+    format_memory(memory->swap_used, swap_used_str, sizeof(swap_used_str));
+    format_memory(memory->swap_total, swap_total_str, sizeof(swap_total_str));
+    
+    const char *swap_label = "SWP";
+    wattron(memory_window, COLOR_PAIR(4));
+    mvwprintw(memory_window, y, x, "%s", swap_label);
+    wattroff(memory_window, COLOR_PAIR(4));
+
+    int swap_bar_x = x + strlen(swap_label) + 1;
+    wmove(memory_window, y, swap_bar_x);
+    draw_swap_bar(memory_window, memory->swap_total, memory->swap_used, bar_width);
+
+    if (memory->swap_total == 0) {
+        wattron(memory_window, COLOR_PAIR(3));
+        mvwprintw(memory_window, y, info_x, "no swap");
+        wattroff(memory_window, COLOR_PAIR(3));
+    } else {
+        mvwprintw(memory_window, y, info_x, "%s / %s", swap_used_str, swap_total_str);
+    }
 }
 
 static void draw_network(void) {

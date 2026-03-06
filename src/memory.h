@@ -11,6 +11,9 @@ typedef struct {
     unsigned long long available;
     unsigned long long shmem;
     unsigned long long sreclaimable;
+    unsigned long long swap_total;
+    unsigned long long swap_free;
+    unsigned long long swap_used;
 } memory_stats_t;
 
 int read_memory_stats(memory_stats_t *memory);
