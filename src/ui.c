@@ -191,8 +191,8 @@ static void draw_swap_bar(WINDOW *win, unsigned long long swap_total, unsigned l
         
         for (int i = 0; i < bar_width; i++) {
             waddch(win, FULL_BLOCK);
-        }
         
+        }
         wattroff(win, COLOR_PAIR(5));
         return;
     }
@@ -320,10 +320,6 @@ static void draw_memory(const memory_stats_t *memory) {
 
     y++;
 
-    char swap_used_str[16], swap_total_str[16];
-    format_memory(memory->swap_used, swap_used_str, sizeof(swap_used_str));
-    format_memory(memory->swap_total, swap_total_str, sizeof(swap_total_str));
-    
     const char *swap_label = "SWP";
     wattron(memory_window, COLOR_PAIR(4));
     mvwprintw(memory_window, y, x, "%s", swap_label);
@@ -338,6 +334,9 @@ static void draw_memory(const memory_stats_t *memory) {
         mvwprintw(memory_window, y, info_x, "no swap");
         wattroff(memory_window, COLOR_PAIR(3));
     } else {
+        char swap_used_str[16], swap_total_str[16];
+        format_memory(memory->swap_used, swap_used_str, sizeof(swap_used_str));
+        format_memory(memory->swap_total, swap_total_str, sizeof(swap_total_str));
         mvwprintw(memory_window, y, info_x, "%s / %s", swap_used_str, swap_total_str);
     }
 }
