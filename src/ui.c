@@ -3,9 +3,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <locale.h>
 
 #include "memory.h"
 #include "network.h"
+#include "system.h"
 
 // gotta split this file up at some point
 
@@ -30,12 +32,15 @@
 #define START_Y 1
 #define START_X 2
 
-#define NETWORK_HISTORY_MAX 120 // for 10 seconds of history
+#define NETWORK_HISTORY_MAX 120
 
 static double *download_history = NULL;
 static double *upload_history = NULL;
+static double max_download_recorded = 0;
+static double max_upload_recorded = 0;
 static int history_size = 0;
 static int history_index = 0;
+static int history_count = 0;
 static network_stats_t previous_network_stats = {0};
 static int network_stats_initialized = 0;
 
@@ -126,21 +131,26 @@ void initialize_ui(void) {
     keypad(stdscr, TRUE);
 
     start_color();
+    assume_default_colors(-1, COLOR_BLACK);
     use_default_colors();
 
-    // cpu bar colors
     init_pair(1, COLOR_GREEN, -1);
-    init_pair(2, COLOR_YELLOW, -1);
-    init_pair(3, COLOR_RED, -1);
-
-    // generic ui colors
+    // init_pair(2, COLOR_YELLOW, -1);
+    // init_pair(3, COLOR_RED, -1);
     init_pair(4, COLOR_BLUE, -1);
-    if (COLORS >= 256) init_pair(5, 245, -1); // gray
-    
-    // memory bar colors
-    // reuse some from cpu
+    // if (COLORS >= 256) init_pair(5, 240, -1); // gray
     init_pair(6, COLOR_CYAN, -1);
     init_pair(7, COLOR_MAGENTA, -1);
+    if (COLORS >= 256) {
+        init_pair(2, 28, -1); // "Green4"
+        init_pair(3, 22, -1); // "DarkGreen"
+        init_pair(5, 240, -1); // gray
+        init_pair(8, 65, -1); // gray-green
+        init_pair(9, 107, -1); // "DarkOliveGreen3"
+        init_pair(10, 108, -1); // "DarkSeaGreen"
+        init_pair(11, 53, -1); // "DeepPink4"
+        init_pair(12, 24, -1); // "DeepSkyBlue4"
+    }
 
     refresh();
 }
@@ -233,14 +243,15 @@ static void draw_swap_bar(WINDOW *win, unsigned long long swap_total, unsigned l
     }
 }
 
-static void draw_titled_box(WINDOW *win, const char *title) {
-    wattron(win, COLOR_PAIR(5));
+static void draw_titled_box(WINDOW *win, const char *title, int color_pair) {
+    wattron(win, COLOR_PAIR(color_pair));
     box(win, 0, 0);
 
     if (title) {
+        wattron(win, A_BOLD);
         mvwprintw(win, 0, 2, " %s ", title);
+        wattroff(win, A_BOLD);
     }
-
     wattroff(win, COLOR_PAIR(5));
 }
 
@@ -249,7 +260,7 @@ static void draw_cpu(double *cpu_usage, size_t core_count) {
 
     if (!cpu_window) create_cpu_window(core_count);
 
-    draw_titled_box(cpu_window, "CPU");
+    draw_titled_box(cpu_window, "CPU", 8);
     
     int win_h, win_w;
     getmaxyx(cpu_window, win_h, win_w);
@@ -276,15 +287,17 @@ static void draw_cpu(double *cpu_usage, size_t core_count) {
         int bar_x = label_x + label_width + 1;
         int percent_x = bar_x + bar_width + 1;
 
-        wattron(cpu_window, COLOR_PAIR(4));
-        mvwprintw(cpu_window, y, label_x, "%*zu", label_width, i+1);
-        wattroff(cpu_window, COLOR_PAIR(4));
+        wattron(cpu_window, COLOR_PAIR(9));
+        mvwprintw(cpu_window, y, label_x, "%*zu", label_width, i);
+        wattroff(cpu_window, COLOR_PAIR(9));
         
         wmove(cpu_window, y, bar_x);
         draw_bar(cpu_window, cpu_usage[i], bar_width);
 
         if (percent_x + PERCENT_WIDTH <= win_w) {
+            wattron(cpu_window, COLOR_PAIR(10));
             mvwprintw(cpu_window, y, percent_x, "%6.2f%%", cpu_usage[i]);
+            wattroff(cpu_window, COLOR_PAIR(10));
         }
     }
 }
@@ -299,12 +312,12 @@ static void format_memory(unsigned long long kb, char *buffer, size_t buffer_siz
     }
 }
 
-static void draw_memory(const memory_stats_t *memory) { 
+static void draw_memory(const memory_stats_t *memory, const system_stats_t *system) { 
     if (!memory || memory->total == 0) return;
 
     if (!memory_window) create_memory_window();
 
-    draw_titled_box(memory_window, "MEM");
+    draw_titled_box(memory_window, "MEM", 4);
 
     int win_h, win_w;
     getmaxyx(memory_window, win_h, win_w);
@@ -360,6 +373,20 @@ static void draw_memory(const memory_stats_t *memory) {
         format_memory(memory->swap_total, swap_total_str, sizeof(swap_total_str));
         mvwprintw(memory_window, y, info_x, "%s / %s", swap_used_str, swap_total_str);
     }
+
+    if (system) {
+        y += 2;
+
+        long days = system->uptime_seconds / 86400;
+        long hours = (system->uptime_seconds % 86400) / 3600;
+        long minutes = (system->uptime_seconds % 3600) / 60;
+
+        mvwprintw(memory_window, y++, x, "Uptime: %ldd %ldh %ldm", days, hours, minutes);
+        mvwprintw(memory_window, y++, x, "Load: %.2f %.2f %2.f",
+                system->load_1min, system->load_5min, system->load_15min);
+        mvwprintw(memory_window, y++, x, "Procs: %d", system->process_count);
+        mvwprintw(memory_window, y++, x, "Kernel: %s", system->kernel_version);
+    }
 }
 
 static void init_network_history(int size) {
@@ -407,7 +434,11 @@ static void update_network_history(const network_stats_t *current) {
     download_history[history_index] = download_speed;
     upload_history[history_index] = upload_speed;
 
+    if (download_speed > max_download_recorded) max_download_recorded = download_speed;
+    if (upload_speed > max_upload_recorded) max_upload_recorded = upload_speed;
+
     history_index = (history_index + 1) % history_size;
+    if (history_count < history_size) history_count++;
 
     previous_network_stats = *current;
 }
@@ -429,7 +460,7 @@ static void draw_network(void) {
         create_network_window();
     }
     
-    draw_titled_box(network_window, "NET");
+    draw_titled_box(network_window, "NET", 7);
     
     int win_h, win_w;
     getmaxyx(network_window, win_h, win_w);
@@ -457,7 +488,7 @@ static void draw_network(void) {
     }
     
     int center_y = win_h / 2;
-    int graph_height = (win_h - 6) / 2;
+    int graph_height = (win_h - 4) / 2;
     int graph_x_start = 2;
     
     wattron(network_window, COLOR_PAIR(6));
@@ -465,33 +496,46 @@ static void draw_network(void) {
     waddch(network_window, DOWN_ARROW);
     wprintw(network_window, " %-10s", down_str);
     wattroff(network_window, COLOR_PAIR(6));
-    
+   
+    char peak_download_str[16];
+    format_speed(max_download_recorded, peak_download_str, sizeof(peak_download_str));
+    wattron(network_window, COLOR_PAIR(12));
+    wprintw(network_window, " peak: %s", peak_download_str);
+    wattroff(network_window, COLOR_PAIR(12));
+
     wattron(network_window, COLOR_PAIR(7));
     wmove(network_window, win_h - 2, 2);
     waddch(network_window, UP_ARROW);
     wprintw(network_window, " %-10s", up_str);
     wattroff(network_window, COLOR_PAIR(7));
-    
-    wmove(network_window, center_y, 2);
-    for (int i = 0; i < graph_width; i++) {
-        waddch(network_window, ACS_HLINE);
-    }
+
+    char peak_upload_str[16];
+    format_speed(max_upload_recorded, peak_upload_str, sizeof(peak_upload_str));
+    wattron(network_window, COLOR_PAIR(11));
+    wprintw(network_window, " peak: %s", peak_upload_str);
+    wattroff(network_window, COLOR_PAIR(11));
     
     for (int i = 0; i < history_size && i < graph_width; i++) {
         int history_idx = (history_index + i) % history_size;
         
-        double down_ratio = pow(download_history[history_idx] / max_download, 0.5);
-        double up_ratio = pow(upload_history[history_idx] / max_upload, 0.5);
+        double down_ratio = pow(download_history[history_idx] / max_download, 0.33);
+        double up_ratio = pow(upload_history[history_idx] / max_upload, 0.33);
 
         int down_height = (int)(down_ratio * graph_height);
         int up_height = (int)(up_ratio * graph_height);
         
         int x = graph_x_start + i;
 
+        int has_data = (i >= history_size - history_count);
+
         for (int y = 0; y < graph_height; y++) {
             if (y < down_height) {
-                wattron(network_window, COLOR_PAIR(6));  // data color
+                wattron(network_window, COLOR_PAIR(6));
                 mvwaddch(network_window, center_y - y - 1, x, GRAPH_BLOCK);
+                wattroff(network_window, COLOR_PAIR(6));
+            } else if (has_data && y == 0) {
+                wattron(network_window, COLOR_PAIR(6));
+                mvwaddch(network_window, center_y - y - 1, x, ACS_S9);
                 wattroff(network_window, COLOR_PAIR(6));
             } else {
                 mvwaddch(network_window, center_y - y - 1, x, ' ');
@@ -500,11 +544,15 @@ static void draw_network(void) {
         
         for (int y = 0; y < graph_height; y++) {
             if (y < up_height) {
-                wattron(network_window, COLOR_PAIR(7));  // data color
-                mvwaddch(network_window, center_y + y + 1, x, GRAPH_BLOCK);
+                wattron(network_window, COLOR_PAIR(7));
+                mvwaddch(network_window, center_y + y, x, GRAPH_BLOCK);
+                wattroff(network_window, COLOR_PAIR(7));
+            } else if (has_data && y == 0) {
+                wattron(network_window, COLOR_PAIR(7));
+                mvwaddch(network_window, center_y + y, x, ACS_S1);
                 wattroff(network_window, COLOR_PAIR(7));
             } else {
-                mvwaddch(network_window, center_y + y + 1, x, ' ');
+                mvwaddch(network_window, center_y + y, x, ' ');
             }
         } 
     }
@@ -519,13 +567,14 @@ static void draw_footer(void) {
     }
 }
 
-void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory, const network_stats_t *network) {
+void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory, 
+        const network_stats_t *network, const system_stats_t *system) {
     if (network) {
         update_network_history(network);
     }
 
     draw_cpu(cpu_usage, core_count);
-    draw_memory(memory);
+    draw_memory(memory, system);
     draw_network();
     draw_footer();
 
