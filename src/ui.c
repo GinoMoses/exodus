@@ -1,12 +1,19 @@
 #include <ncurses.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdlib.h>
+#include <math.h>
 
 #include "memory.h"
+#include "network.h"
 
 // gotta split this file up at some point
 
 #define FULL_BLOCK ACS_BLOCK
+#define GRAPH_BLOCK ACS_CKBOARD
+
+#define DOWN_ARROW ACS_DARROW
+#define UP_ARROW ACS_UARROW
 
 // unicode for borders
 #define BOX_HORIZONTAL 0x2500
@@ -23,6 +30,16 @@
 #define START_Y 1
 #define START_X 2
 
+#define NETWORK_HISTORY_MAX 120 // for 10 seconds of history
+
+static double *download_history = NULL;
+static double *upload_history = NULL;
+static int history_size = 0;
+static int history_index = 0;
+static network_stats_t previous_network_stats = {0};
+static int network_stats_initialized = 0;
+
+
 // window definitions
 static WINDOW *cpu_window = NULL;
 static WINDOW *memory_window = NULL;
@@ -34,6 +51,10 @@ void shutdown_ui(void) {
     if (memory_window) delwin(memory_window);
     if (network_window) delwin(network_window);
     if (footer_window) delwin(footer_window);
+    
+    if (download_history) free(download_history);
+    if (upload_history) free(upload_history);
+
     endwin();
 }
 
@@ -58,7 +79,7 @@ static void create_memory_window(void) {
     getmaxyx(cpu_window, cpu_win_h, cpu_win_w);
     (void)cpu_win_w; // unused
 
-    int memory_height = 5;
+    int memory_height = 12;
     int memory_y = START_Y + cpu_win_h + 1;
     int memory_width = (term_w - 4) / 2 - 1;
 
@@ -75,7 +96,7 @@ static void create_network_window(void) {
     getmaxyx(cpu_window, cpu_win_h, cpu_win_w);
     (void)cpu_win_w;
 
-    int network_height = 5;
+    int network_height = 12;
     int network_y = START_Y + cpu_win_h + 1;
 
     int network_width = (term_w - 4) / 2 - 1;
@@ -101,7 +122,8 @@ void initialize_ui(void) {
     cbreak();
     noecho();
     curs_set(0);
-    nodelay(stdscr, true);
+    nodelay(stdscr, TRUE);
+    keypad(stdscr, TRUE);
 
     start_color();
     use_default_colors();
@@ -121,7 +143,6 @@ void initialize_ui(void) {
     init_pair(7, COLOR_MAGENTA, -1);
 
     refresh();
-    getch();
 }
 
 static int get_label_width(size_t core_count) {
@@ -341,12 +362,152 @@ static void draw_memory(const memory_stats_t *memory) {
     }
 }
 
-static void draw_network(void) {
-    if (!network_window) create_network_window();
+static void init_network_history(int size) {
+    if (download_history) {
+        free(download_history);
+        free(upload_history);
+    }
 
-    box(network_window, 0, 0);
+    history_size = size;
+    if (history_size > NETWORK_HISTORY_MAX) history_size = NETWORK_HISTORY_MAX;
+    if (history_size < 10) history_size = 10;
+
+    download_history = calloc(history_size, sizeof(double));
+    upload_history = calloc(history_size, sizeof(double));
+    history_index = 0;
+}
+
+static void update_network_history(const network_stats_t *current) {
+    static int first_calc = 1;
+
+    if (!network_stats_initialized) {
+        previous_network_stats = *current;
+        network_stats_initialized = 1;
+        
+        if (download_history && upload_history) {
+            for (int i = 0; i < history_size; i++) {
+                download_history[i] = 0;
+                upload_history[i] = 0;
+            }
+        }
+
+        return;
+    }
+
+    double download_speed = (double)(current->rx_bytes - previous_network_stats.rx_bytes);
+    double upload_speed = (double)(current->tx_bytes - previous_network_stats.tx_bytes);
+
+    // skip first sample
+    if (first_calc) {
+        first_calc = 0;
+        previous_network_stats = *current;
+        return;
+    }
+
+    download_history[history_index] = download_speed;
+    upload_history[history_index] = upload_speed;
+
+    history_index = (history_index + 1) % history_size;
+
+    previous_network_stats = *current;
+}
+
+static void format_speed(double bytes_per_sec, char *buffer, size_t buffer_size) {
+    if (bytes_per_sec >= 1024 * 1024 * 1024) {
+        snprintf(buffer, buffer_size, "%.1fGB/s", bytes_per_sec / (1024 * 1024 * 1024));
+    } else if (bytes_per_sec >= 1024 * 1024) {
+        snprintf(buffer, buffer_size, "%.1fMB/s", bytes_per_sec / (1024 * 1024));
+    } else  if (bytes_per_sec >= 1024) {
+        snprintf(buffer, buffer_size, "%.1fKB/s", bytes_per_sec / 1024);
+    } else {
+        snprintf(buffer, buffer_size, "%.0fB/s", bytes_per_sec);
+    }
+}
+
+static void draw_network(void) {
+    if (!network_window) {
+        create_network_window();
+    }
+    
     draw_titled_box(network_window, "NET");
-    mvwprintw(network_window, 2, 2, "Coming soon");
+    
+    int win_h, win_w;
+    getmaxyx(network_window, win_h, win_w);
+   
+    int graph_width = win_w - 4;
+
+    if (!download_history || history_size != graph_width) {
+        init_network_history(graph_width);
+    }
+
+    int current_idx = (history_index - 1 + history_size) % history_size;
+    double current_download = download_history[current_idx];
+    double current_upload = upload_history[current_idx];
+    
+    char down_str[16], up_str[16];
+    format_speed(current_download, down_str, sizeof(down_str));
+    format_speed(current_upload, up_str, sizeof(up_str));
+    
+    double max_download = 0.0001;
+    double max_upload = 0.0001;
+    
+    for (int i = 0; i < history_size; i++) {
+        if (download_history[i] > max_download) max_download = download_history[i];
+        if (upload_history[i] > max_upload) max_upload = upload_history[i];
+    }
+    
+    int center_y = win_h / 2;
+    int graph_height = (win_h - 6) / 2;
+    int graph_x_start = 2;
+    
+    wattron(network_window, COLOR_PAIR(6));
+    wmove(network_window, 1, 2);
+    waddch(network_window, DOWN_ARROW);
+    wprintw(network_window, " %-10s", down_str);
+    wattroff(network_window, COLOR_PAIR(6));
+    
+    wattron(network_window, COLOR_PAIR(7));
+    wmove(network_window, win_h - 2, 2);
+    waddch(network_window, UP_ARROW);
+    wprintw(network_window, " %-10s", up_str);
+    wattroff(network_window, COLOR_PAIR(7));
+    
+    wmove(network_window, center_y, 2);
+    for (int i = 0; i < graph_width; i++) {
+        waddch(network_window, ACS_HLINE);
+    }
+    
+    for (int i = 0; i < history_size && i < graph_width; i++) {
+        int history_idx = (history_index + i) % history_size;
+        
+        double down_ratio = pow(download_history[history_idx] / max_download, 0.5);
+        double up_ratio = pow(upload_history[history_idx] / max_upload, 0.5);
+
+        int down_height = (int)(down_ratio * graph_height);
+        int up_height = (int)(up_ratio * graph_height);
+        
+        int x = graph_x_start + i;
+
+        for (int y = 0; y < graph_height; y++) {
+            if (y < down_height) {
+                wattron(network_window, COLOR_PAIR(6));  // data color
+                mvwaddch(network_window, center_y - y - 1, x, GRAPH_BLOCK);
+                wattroff(network_window, COLOR_PAIR(6));
+            } else {
+                mvwaddch(network_window, center_y - y - 1, x, ' ');
+            }
+        }
+        
+        for (int y = 0; y < graph_height; y++) {
+            if (y < up_height) {
+                wattron(network_window, COLOR_PAIR(7));  // data color
+                mvwaddch(network_window, center_y + y + 1, x, GRAPH_BLOCK);
+                wattroff(network_window, COLOR_PAIR(7));
+            } else {
+                mvwaddch(network_window, center_y + y + 1, x, ' ');
+            }
+        } 
+    }
 }
 
 static void draw_footer(void) {
@@ -358,7 +519,11 @@ static void draw_footer(void) {
     }
 }
 
-void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory) {
+void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory, const network_stats_t *network) {
+    if (network) {
+        update_network_history(network);
+    }
+
     draw_cpu(cpu_usage, core_count);
     draw_memory(memory);
     draw_network();
@@ -367,6 +532,6 @@ void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memor
     wnoutrefresh(cpu_window);
     wnoutrefresh(memory_window);
     wnoutrefresh(network_window);
-    // wnoutrefresh(footer_window); - not needed, content doesn't change
+    wnoutrefresh(footer_window);
     doupdate();
 }

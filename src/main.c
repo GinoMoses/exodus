@@ -6,10 +6,12 @@
 #include "memory.h"
 #include "ui.h"
 #include "input.h"
+#include "network.h"
 
 int main(void) {
     cpu_set_t current = {0}, previous = {0};
     memory_stats_t memory = {0};
+    network_stats_t network = {0};
 
     if (read_cpu_stats(&previous) != 0) {
         return -1;
@@ -23,7 +25,7 @@ int main(void) {
     double *cpu_usage = calloc(core_count, sizeof(double));
 
     initialize_ui();
-    update_ui(cpu_usage, core_count, &memory);
+    update_ui(cpu_usage, core_count, &memory, &network);
 
     while (1) {
         // instead of sleep use time to check for input
@@ -38,6 +40,7 @@ int main(void) {
 
         if (read_cpu_stats(&current) != 0) {
             free(cpu_usage);
+            shutdown_ui();
             return -1;
         }
 
@@ -46,8 +49,9 @@ int main(void) {
         }
         
         read_memory_stats(&memory);
+        read_network_stats(&network, NULL);
 
-        update_ui(cpu_usage, core_count, &memory);
+        update_ui(cpu_usage, core_count, &memory, &network);
         
         free_cpu_set(&previous);
         previous = current;

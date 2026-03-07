@@ -1,0 +1,41 @@
+update_network_history called
+Line:     lo:  262109    2552    0    0    0     0          0         0   262109    2552    0    0    0     0       0          0
+Matched: 17, iface: 'lo'
+Line:   eth0: 379336652  327379    0    0    0     0          0      1614 169372610  215821    0    0    0     0       0          0
+Matched: 17, iface: 'eth0'
+Found: 1
+Net: eth0: RX:379336652 TX169372610
+update_network_history called
+Speeds - Down: 379336652.00 B/s, Up: 169372610.00 B/s
+Line:     lo:  262109    2552    0    0    0     0          0         0   262109    2552    0    0    0     0       0          0
+Matched: 17, iface: 'lo'
+Line:   eth0: 379336652  327379    0    0    0     0          0      1614 169372610  215821    0    0    0     0       0          0
+Matched: 17, iface: 'eth0'
+Found: 1
+Net: eth0: RX:379336652 TX169372610
+update_network_history called
+Speeds - Down: 0.00 B/s, Up: 0.00 B/s
+Line:     lo:  262109    2552    0    0    0     0          0         0   262109    2552    0    0    0     0       0          0
+Matched: 17, iface: 'lo'
+Line:   eth0: 379336652  327379    0    0    0     0          0      1614 169372610  215821    0    0    0     0       0          0
+Matched: 17, iface: 'eth0'
+Found: 1
+Net: eth0: RX:379336652 TX169372610
+update_network_history called
+Speeds - Down: 0.00 B/s, Up: 0.00 B/s
+Line:     lo:  262109    2552    0    0    0     0          0         0   262109    2552    0    0    0     0       0          0
+Matched: 17, iface: 'lo'
+Line:   eth0: 379336652  327379    0    0    0     0          0      1614 169372610  215821    0    0    0     0       0          0
+Matched: 17, iface: 'eth0'
+Found: 1
+Net: eth0: RX:379336652 TX169372610
+update_network_history called
+Speeds - Down: 0.00 B/s, Up: 0.00 B/s
+Line:     lo:  262109    2552    0    0    0     0          0         0   262109    2552    0    0    0     0       0          0
+Matched: 17, iface: 'lo'
+Line:   eth0: 379336652  327379    0    0    0     0          0      1614 169372610  215821    0    0    0     0       0          0
+Matched: 17, iface: 'eth0'
+Found: 1
+Net: eth0: RX:379336652 TX169372610
+update_network_history called
+Speeds - Down: 0.00 B/s, Up: 0.00 B/s
