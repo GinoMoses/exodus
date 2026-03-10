@@ -73,7 +73,14 @@ int main(void) {
         }
         
         read_memory_stats(&memory);
-        read_network_stats(&network, NULL);
+        char iface[32];
+        const char *iface_ptr = NULL;
+        
+        if (get_default_route_interface(iface, sizeof(iface)) == 0) {
+            iface_ptr = iface;
+        }
+        
+        read_network_stats(&network, iface_ptr);
         read_system_stats(&system);
         read_processes(&processes);
         calculate_process_stats(&processes, memory.total);

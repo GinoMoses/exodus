@@ -3,6 +3,34 @@
 
 #include "network.h"
 
+int get_default_route_interface(char *out_iface, size_t out_size) {
+    if (!out_iface || out_size == 0) return -1;
+
+    FILE *file = fopen("/proc/net/route", "r");
+    if (!file) return -1;
+
+    char line[256];
+    if (!fgets(line, sizeof(line), file)) {
+        fclose(file);
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), file)) {
+        char iface[32];
+        unsigned long dest = 0;
+
+        if (sscanf(line, "%31s %lx", iface, &dest) != 2) continue;
+        if (dest == 0) {
+            snprintf(out_iface, out_size, "%s", iface);
+            fclose(file);
+            return 0;
+        }
+    }
+
+    fclose(file);
+    return -1;
+}
+
 int read_network_stats(network_stats_t *stats, const char *interface) {
     if (!stats) return -1;
 
@@ -34,7 +62,7 @@ int read_network_stats(network_stats_t *stats, const char *interface) {
         if (strcmp(iface_trimmed, "lo") == 0) continue;
 
         if (interface == NULL || strcmp(iface_trimmed, interface) == 0) {
-            strncpy(stats->name, iface_trimmed, sizeof(stats->name) - 1);
+            snprintf(stats->name, sizeof(stats->name), "%s", iface_trimmed);
             stats->rx_bytes = rx_bytes;
             stats->tx_bytes = tx_bytes;
             found = 1;
