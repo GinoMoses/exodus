@@ -3,11 +3,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
-#include <locale.h>
 
 #include "memory.h"
 #include "network.h"
 #include "system.h"
+#include "process.h"
 
 // gotta split this file up at some point
 
@@ -44,17 +44,20 @@ static int history_count = 0;
 static network_stats_t previous_network_stats = {0};
 static int network_stats_initialized = 0;
 
+static int process_scroll_offset = 0;
 
 // window definitions
 static WINDOW *cpu_window = NULL;
 static WINDOW *memory_window = NULL;
 static WINDOW *network_window = NULL;
+static WINDOW *process_window = NULL;
 static WINDOW *footer_window = NULL;
 
 void shutdown_ui(void) {
     if (cpu_window) delwin(cpu_window);
     if (memory_window) delwin(memory_window);
     if (network_window) delwin(network_window);
+    if (process_window) delwin(process_window);
     if (footer_window) delwin(footer_window);
     
     if (download_history) free(download_history);
@@ -109,6 +112,26 @@ static void create_network_window(void) {
 
     if (network_window) delwin(network_window);
     network_window = newwin(network_height, network_width, network_y, network_x);
+}
+
+static void create_process_window(void) {
+    int term_h, term_w;
+    getmaxyx(stdscr, term_h, term_w);
+    
+    int mem_win_h, mem_win_w;
+    getmaxyx(memory_window, mem_win_h, mem_win_w);
+    (void)mem_win_w; // unused
+
+    int cpu_win_h, cpu_win_w;
+    getmaxyx(cpu_window, cpu_win_h, cpu_win_w);
+    (void)cpu_win_w; // unused
+
+    int proc_y = 1 + cpu_win_h + mem_win_h + 2;
+    int proc_height = term_h - proc_y - 4;
+    int proc_width = term_w - 4;
+
+    if (process_window) delwin(process_window);
+    process_window = newwin(proc_height, proc_width, proc_y, START_X);
 }
 
 static void create_footer_window(void) {
@@ -558,6 +581,75 @@ static void draw_network(void) {
     }
 }
 
+void scroll_process_list(int delta) {
+    process_scroll_offset += delta;
+}
+
+static void draw_processes(const process_list_t *processes) {
+    if (!process_window) create_process_window();
+   
+    werase(process_window);
+
+    draw_titled_box(process_window, "PROC", 8);
+    
+    int win_h, win_w;
+    getmaxyx(process_window, win_h, win_w);
+    
+    wattron(process_window, A_BOLD | COLOR_PAIR(9));
+    mvwprintw(process_window, 1, 2, "%-7s %-10s %6s %6s  %s",
+            "PID", "USER", "CPU%", "MEM%", "COMMAND");
+    wattroff(process_window, A_BOLD | COLOR_PAIR(9));
+
+    if (!processes || processes->count == 0) {
+        mvwprintw(process_window, 3, 2, "No processes found");
+        return;
+    }
+
+    int max_rows = win_h - 3;
+    int max_scroll = (int)processes->count - max_rows;
+    
+    if (max_scroll < 0) max_scroll = 0;
+    if (process_scroll_offset > max_scroll) process_scroll_offset = max_scroll;
+    if (process_scroll_offset < 0) process_scroll_offset = 0;
+
+    for (int i = 0; i < max_rows; i++) {
+        int proc_idx = process_scroll_offset + i;
+        if (proc_idx >= (int)processes->count) break;
+
+        const process_t *proc = &processes->processes[proc_idx];
+
+        int cmd_width = win_w - 40;
+        char cmd_truncated[256];
+        strncpy(cmd_truncated, proc->command, sizeof(cmd_truncated) -1);
+        cmd_truncated[sizeof(cmd_truncated) - 1] = '\0';
+
+        if ((int)strlen(cmd_truncated) > cmd_width) {
+            cmd_truncated[cmd_width - 3] = '.';
+            cmd_truncated[cmd_width - 2] = '.';
+            cmd_truncated[cmd_width - 1] = '.';
+            cmd_truncated[cmd_width] = '\0';
+        }
+
+        mvwprintw(process_window, 2 + i, 2, "%-7d %-10s %6.1f %6.1f  %s",
+                proc->pid, proc->user, proc->cpu_percent, proc->mem_percent, cmd_truncated);
+    }
+
+    if (max_scroll > 0) {
+        int indicator_y = win_h - 1;
+        mvwprintw(process_window, indicator_y, win_w - 20, "(%d-%d of %zu)",
+                process_scroll_offset + 1,
+                process_scroll_offset + max_rows < (int)processes->count ?
+                    process_scroll_offset + max_rows : (int)processes->count,
+                processes->count);
+    }
+}
+
+void refresh_process_window(const process_list_t *processes) {
+    draw_processes(processes);
+    wnoutrefresh(process_window);
+    doupdate();
+}
+
 static void draw_footer(void) {
     if (!footer_window) {
         create_footer_window();
@@ -568,7 +660,8 @@ static void draw_footer(void) {
 }
 
 void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory, 
-        const network_stats_t *network, const system_stats_t *system) {
+        const network_stats_t *network, const system_stats_t *system,
+        const process_list_t *processes) {
     if (network) {
         update_network_history(network);
     }
@@ -576,11 +669,13 @@ void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memor
     draw_cpu(cpu_usage, core_count);
     draw_memory(memory, system);
     draw_network();
+    draw_processes(processes);
     draw_footer();
 
     wnoutrefresh(cpu_window);
     wnoutrefresh(memory_window);
     wnoutrefresh(network_window);
+    wnoutrefresh(process_window);
     wnoutrefresh(footer_window);
     doupdate();
 }

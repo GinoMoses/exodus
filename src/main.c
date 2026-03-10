@@ -8,12 +8,14 @@
 #include "input.h"
 #include "network.h"
 #include "system.h"
+#include "process.h"
 
 int main(void) {
     cpu_set_t current = {0}, previous = {0};
     memory_stats_t memory = {0};
     network_stats_t network = {0};
     system_stats_t system = {0};
+    process_list_t processes = {0};
 
     if (read_cpu_stats(&previous) != 0) {
         return -1;
@@ -27,7 +29,7 @@ int main(void) {
     double *cpu_usage = calloc(core_count, sizeof(double));
 
     initialize_ui();
-    update_ui(cpu_usage, core_count, &memory, &network, &system);
+    update_ui(cpu_usage, core_count, &memory, &network, &system, &processes);
 
     while (1) {
         // instead of sleep use time to check for input
@@ -37,6 +39,18 @@ int main(void) {
             input_action_t action = handle_input();
             if (action == INPUT_QUIT) {
                 goto cleanup;
+            } else if (action == INPUT_ARROW_UP) {
+                scroll_process_list(-1);
+                refresh_process_window(&processes);
+            } else if (action == INPUT_ARROW_DOWN) {
+                scroll_process_list(1);
+                refresh_process_window(&processes);
+            } else if (action == INPUT_PAGE_UP) {
+                scroll_process_list(-10);
+                refresh_process_window(&processes);
+            } else if (action == INPUT_PAGE_DOWN) {
+                scroll_process_list(10);
+                refresh_process_window(&processes);
             }
         }
 
@@ -53,8 +67,10 @@ int main(void) {
         read_memory_stats(&memory);
         read_network_stats(&network, NULL);
         read_system_stats(&system);
+        read_processes(&processes);
+        calculate_process_stats(&processes, memory.total);
 
-        update_ui(cpu_usage, core_count, &memory, &network, &system);
+        update_ui(cpu_usage, core_count, &memory, &network, &system, &processes);
         
         free_cpu_set(&previous);
         previous = current;
@@ -66,6 +82,7 @@ int main(void) {
         free_cpu_set(&current);
         free_cpu_set(&previous);
         free(cpu_usage);
+        free_process_list(&processes);
         shutdown_ui();
         return 0;
 }
