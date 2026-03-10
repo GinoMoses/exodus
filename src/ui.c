@@ -104,7 +104,10 @@ static void create_memory_window(void) {
 
     int memory_height = 12;
     int memory_y = START_Y + cpu_win_h + 1;
-    int memory_width = (term_w - 4) / 2 - 1;
+    
+    int available_width = term_w - 4;
+    int gap = 2;
+    int memory_width = (available_width - gap) / 2;
 
     if (memory_window) delwin(memory_window);
     memory_window = newwin(memory_height, memory_width, memory_y, START_X);
@@ -121,9 +124,15 @@ static void create_network_window(void) {
 
     int network_height = 12;
     int network_y = START_Y + cpu_win_h + 1;
+    
+    int mem_win_w;
+    getmaxyx(memory_window, network_height, mem_win_w);
 
-    int network_width = (term_w - 4) / 2 - 1;
-    int network_x = START_X + network_width + 2;
+    int available_width = term_w - 4;
+    int gap = 2;
+
+    int network_x = START_X + mem_win_w + gap;
+    int network_width = available_width - mem_win_w - gap;
 
     if (network_window) delwin(network_window);
     network_window = newwin(network_height, network_width, network_y, network_x);
@@ -174,22 +183,43 @@ void initialize_ui(void) {
     assume_default_colors(-1, COLOR_BLACK);
     use_default_colors();
 
-    init_pair(1, COLOR_GREEN, -1);
-    // init_pair(2, COLOR_YELLOW, -1);
-    // init_pair(3, COLOR_RED, -1);
-    init_pair(4, COLOR_BLUE, -1);
-    // if (COLORS >= 256) init_pair(5, 240, -1); // gray
-    init_pair(6, COLOR_CYAN, -1);
-    init_pair(7, COLOR_MAGENTA, -1);
+    // color scheme
     if (COLORS >= 256) {
-        init_pair(2, 28, -1); // "Green4"
-        init_pair(3, 22, -1); // "DarkGreen"
-        init_pair(5, 240, -1); // gray
-        init_pair(8, 65, -1); // gray-green
-        init_pair(9, 107, -1); // "DarkOliveGreen3"
-        init_pair(10, 108, -1); // "DarkSeaGreen"
-        init_pair(11, 53, -1); // "DeepPink4"
-        init_pair(12, 24, -1); // "DeepSkyBlue4"
+        // cpu
+        init_pair(1, 41, -1);
+        init_pair(2, 185, -1);
+        init_pair(3, 208, -1);
+        init_pair(4, 77, -1);
+        init_pair(6, 157, -1);
+
+        // memory
+        init_pair(7, 75, -1);
+        init_pair(8, 39, -1);
+        init_pair(9, 33, -1);
+        init_pair(10, 27, -1);
+
+        // network
+        init_pair(11, 170, -1);
+        init_pair(12, 141, -1);
+
+        // process
+        init_pair(13, 51, -1);
+
+        init_pair(5, 237, -1);
+    } else {
+        // whatever man
+        init_pair(1, COLOR_GREEN, -1);
+        init_pair(2, COLOR_YELLOW, -1);
+        init_pair(3, COLOR_RED, -1);
+        init_pair(4, COLOR_BLUE, -1);
+        init_pair(5, COLOR_BLACK, -1);
+        init_pair(6, COLOR_CYAN, -1);
+        init_pair(7, COLOR_MAGENTA, -1);
+        init_pair(8, COLOR_GREEN, -1);
+        init_pair(9, COLOR_GREEN, -1);
+        init_pair(10, COLOR_GREEN, -1);
+        init_pair(11, COLOR_MAGENTA, -1);
+        init_pair(12, COLOR_CYAN, -1);
     }
 
     refresh();
@@ -234,20 +264,35 @@ static void draw_memory_bar(WINDOW *win, const memory_stats_t *memory, int bar_w
         (int)((double)(memory->used + memory->buffers) / memory->total * bar_width) : 0.0;
     double cache_end = memory->total > 0 ? 
         (int)((double)(memory->used + memory->buffers + memory->cached) / memory->total * bar_width) : 0.0;
-
+    
     for (int i = 0; i < bar_width; i++) {
         if (i < used_filled) {
-            wattron(win, COLOR_PAIR(6));
+            if (COLORS >= 256) {
+                init_pair(20, 39, -1);
+                wattron(win, COLOR_PAIR(8));
+            } else {
+                wattron(win, COLOR_PAIR(8));
+            }
             waddch(win, FULL_BLOCK);
-            wattroff(win, COLOR_PAIR(6));
+            wattroff(win, COLOR_PAIR(COLORS >= 256 ? 20 : 4));
         } else if (i < buffer_end) {
-            wattron(win, COLOR_PAIR(7));
+            if (COLORS >= 256) {
+                init_pair(21, 33, -1);
+                wattron(win, COLOR_PAIR(9));
+            } else {
+                wattron(win, COLOR_PAIR(9));
+            }
             waddch(win, FULL_BLOCK);
-            wattroff(win, COLOR_PAIR(7));
+            wattroff(win, COLOR_PAIR(COLORS >= 256 ? 21 : 6));
         } else if (i < cache_end) {
-            wattron(win, COLOR_PAIR(2));
+            if (COLORS >= 256) {
+                init_pair(22, 27, -1);
+                wattron(win, COLOR_PAIR(10));
+            } else {
+                wattron(win, COLOR_PAIR(10));
+            }
             waddch(win, FULL_BLOCK);
-            wattroff(win, COLOR_PAIR(2));
+            wattroff(win, COLOR_PAIR(COLORS >= 256 ? 22 : 4));
         } else {
             wattron(win, COLOR_PAIR(5));
             waddch(win, FULL_BLOCK);
@@ -300,7 +345,7 @@ static void draw_cpu(double *cpu_usage, size_t core_count) {
 
     if (!cpu_window) create_cpu_window(core_count);
 
-    draw_titled_box(cpu_window, "CPU", 8);
+    draw_titled_box(cpu_window, "CPU", 4);
     
     int win_h, win_w;
     getmaxyx(cpu_window, win_h, win_w);
@@ -327,17 +372,17 @@ static void draw_cpu(double *cpu_usage, size_t core_count) {
         int bar_x = label_x + label_width + 1;
         int percent_x = bar_x + bar_width + 1;
 
-        wattron(cpu_window, COLOR_PAIR(9));
+        wattron(cpu_window, COLOR_PAIR(6));
         mvwprintw(cpu_window, y, label_x, "%*zu", label_width, i);
-        wattroff(cpu_window, COLOR_PAIR(9));
+        wattroff(cpu_window, COLOR_PAIR(6));
         
         wmove(cpu_window, y, bar_x);
         draw_bar(cpu_window, cpu_usage[i], bar_width);
 
         if (percent_x + PERCENT_WIDTH <= win_w) {
-            wattron(cpu_window, COLOR_PAIR(10));
+            wattron(cpu_window, COLOR_PAIR(6));
             mvwprintw(cpu_window, y, percent_x, "%6.2f%%", cpu_usage[i]);
-            wattroff(cpu_window, COLOR_PAIR(10));
+            wattroff(cpu_window, COLOR_PAIR(6));
         }
     }
 }
@@ -357,15 +402,15 @@ static void draw_memory(const memory_stats_t *memory, const system_stats_t *syst
 
     if (!memory_window) create_memory_window();
 
-    draw_titled_box(memory_window, "MEM", 4);
+    draw_titled_box(memory_window, "MEM", 7);
 
     int win_h, win_w;
     getmaxyx(memory_window, win_h, win_w);
     (void)win_h; // unused
 
-    const char *label   = "MEM";
-    int usable_width    = win_w - 4;
-    int label_width     = strlen(label);
+    const char *label = "MEM";
+    int usable_width = win_w - 4;
+    int label_width = strlen(label);
     
     char used_str[16], total_str[16];
     format_memory(memory->used, used_str, sizeof(used_str));
@@ -506,7 +551,7 @@ static void draw_network(const network_stats_t *network) {
         sprintf(title, "NET [%s]", network->name);
     }
 
-    draw_titled_box(network_window, title, 7);
+    draw_titled_box(network_window, title, 11);
     
     int win_h, win_w;
     getmaxyx(network_window, win_h, win_w);
@@ -537,11 +582,11 @@ static void draw_network(const network_stats_t *network) {
     int graph_height = (win_h - 4) / 2;
     int graph_x_start = 2;
     
-    wattron(network_window, COLOR_PAIR(6));
+    wattron(network_window, COLOR_PAIR(12));
     wmove(network_window, 1, 2);
     waddch(network_window, DOWN_ARROW);
     wprintw(network_window, " %-10s", down_str);
-    wattroff(network_window, COLOR_PAIR(6));
+    wattroff(network_window, COLOR_PAIR(12));
    
     char peak_download_str[16];
     format_speed(max_download_recorded, peak_download_str, sizeof(peak_download_str));
@@ -549,11 +594,11 @@ static void draw_network(const network_stats_t *network) {
     wprintw(network_window, " peak: %-10s", peak_download_str);
     wattroff(network_window, COLOR_PAIR(12));
 
-    wattron(network_window, COLOR_PAIR(7));
+    wattron(network_window, COLOR_PAIR(11));
     wmove(network_window, win_h - 2, 2);
     waddch(network_window, UP_ARROW);
     wprintw(network_window, " %-10s", up_str);
-    wattroff(network_window, COLOR_PAIR(7));
+    wattroff(network_window, COLOR_PAIR(11));
 
     char peak_upload_str[16];
     format_speed(max_upload_recorded, peak_upload_str, sizeof(peak_upload_str));
@@ -576,13 +621,13 @@ static void draw_network(const network_stats_t *network) {
 
         for (int y = 0; y < graph_height; y++) {
             if (y < down_height) {
-                wattron(network_window, COLOR_PAIR(6));
+                wattron(network_window, COLOR_PAIR(12));
                 mvwaddch(network_window, center_y - y - 1, x, GRAPH_BLOCK);
-                wattroff(network_window, COLOR_PAIR(6));
+                wattroff(network_window, COLOR_PAIR(12));
             } else if (has_data && y == 0) {
-                wattron(network_window, COLOR_PAIR(6));
+                wattron(network_window, COLOR_PAIR(12));
                 mvwaddch(network_window, center_y - y - 1, x, ACS_S9);
-                wattroff(network_window, COLOR_PAIR(6));
+                wattroff(network_window, COLOR_PAIR(12));
             } else {
                 mvwaddch(network_window, center_y - y - 1, x, ' ');
             }
@@ -590,13 +635,13 @@ static void draw_network(const network_stats_t *network) {
         
         for (int y = 0; y < graph_height; y++) {
             if (y < up_height) {
-                wattron(network_window, COLOR_PAIR(7));
+                wattron(network_window, COLOR_PAIR(11));
                 mvwaddch(network_window, center_y + y, x, GRAPH_BLOCK);
-                wattroff(network_window, COLOR_PAIR(7));
+                wattroff(network_window, COLOR_PAIR(11));
             } else if (has_data && y == 0) {
-                wattron(network_window, COLOR_PAIR(7));
+                wattron(network_window, COLOR_PAIR(11));
                 mvwaddch(network_window, center_y + y, x, ACS_S1);
-                wattroff(network_window, COLOR_PAIR(7));
+                wattroff(network_window, COLOR_PAIR(11));
             } else {
                 mvwaddch(network_window, center_y + y, x, ' ');
             }
@@ -675,7 +720,7 @@ static void draw_processes(const process_list_t *processes) {
 
     char title[32];
     snprintf(title, sizeof(title), "PROC [%s]", get_sort_mode_name());
-    draw_titled_box(process_window, title, 8);
+    draw_titled_box(process_window, title, 13);
     
     int win_h, win_w;
     getmaxyx(process_window, win_h, win_w);
