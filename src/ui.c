@@ -534,7 +534,7 @@ static void draw_network(void) {
     wprintw(network_window, " %-10s", down_str);
     wattroff(network_window, COLOR_PAIR(6));
    
-    char peak_download_str[64];
+    char peak_download_str[16];
     format_speed(max_download_recorded, peak_download_str, sizeof(peak_download_str));
     wattron(network_window, COLOR_PAIR(12));
     wprintw(network_window, " peak: %-10s", peak_download_str);
