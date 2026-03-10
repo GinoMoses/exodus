@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <signal.h>
+#include <locale.h>
 
 #include "memory.h"
 #include "network.h"
@@ -160,6 +161,8 @@ static void create_footer_window(void) {
 }
 
 void initialize_ui(void) {
+    setlocale(LC_ALL, "");
+
     initscr();
     cbreak();
     noecho();
