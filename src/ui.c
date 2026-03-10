@@ -495,12 +495,18 @@ static void format_speed(double bytes_per_sec, char *buffer, size_t buffer_size)
     }
 }
 
-static void draw_network(void) {
+static void draw_network(const network_stats_t *network) {
     if (!network_window) {
         create_network_window();
     }
+   
+    char title[64];
     
-    draw_titled_box(network_window, "NET", 7);
+    if (network && network->name[0] != '\0') {
+        sprintf(title, "NET [%s]", network->name);
+    }
+
+    draw_titled_box(network_window, title, 7);
     
     int win_h, win_w;
     getmaxyx(network_window, win_h, win_w);
@@ -770,11 +776,12 @@ static void draw_footer(void) {
     if (!footer_window) {
         create_footer_window();
         box(footer_window, 0, 0);
-        mvwprintw(footer_window, 1, 2, "q: Quit  k: Kill Process  ");
+        mvwprintw(footer_window, 1, 2, "[q]: Quit  k: Kill Process  [");
         waddch(footer_window, ACS_UARROW);
-        waddch(footer_window, '/');
+        waddch(footer_window, ' ');
         waddch(footer_window, ACS_DARROW);
-        wprintw(footer_window, ": Scroll Process List");
+        wprintw(footer_window, "]: Scroll Process List  ");
+        wprintw(footer_window, "[< >]: Change Sort  ");
         wnoutrefresh(footer_window);
     }
 }
@@ -788,7 +795,7 @@ void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memor
 
     draw_cpu(cpu_usage, core_count);
     draw_memory(memory, system);
-    draw_network();
+    draw_network(network);
     draw_processes(processes);
     draw_footer();
 

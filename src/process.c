@@ -18,7 +18,9 @@ void calculate_process_stats(process_list_t *current, unsigned long long total_m
         process_t *proc = &current->processes[i];
 
         if (total_mem_kb > 0) {
-            proc->mem_percent = ((double)proc->vsize / 1024) / total_mem_kb * 100.0;
+            long page_size = sysconf(_SC_PAGESIZE);
+            unsigned long long rss_kb = ((unsigned long long)proc->rss * page_size) / 1024;
+            proc->mem_percent = ((double)rss_kb / total_mem_kb) * 100.0; 
         }
         
         if (!processes_initialized) {
@@ -94,7 +96,7 @@ static int read_proc_stat(int pid, process_t *proc) {
     proc->utime = utime;
     proc->stime = stime;
     proc->vsize = vsize;
-
+    proc->rss = rss;
     proc->priority = priority;
     proc->nice = nice;
 

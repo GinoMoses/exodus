@@ -13,6 +13,7 @@ typedef struct {
     unsigned long long utime;
     unsigned long long stime;
     unsigned long long vsize;
+    long rss;
     long priority;
     long nice;
 } process_t;
