@@ -8,6 +8,9 @@ typedef enum {
     INPUT_ARROW_DOWN,
     INPUT_PAGE_UP,
     INPUT_PAGE_DOWN,
+    INPUT_KILL,
+    INPUT_SORT_NEXT,
+    INPUT_SORT_PREV
 } input_action_t;
 
 int handle_input(void);

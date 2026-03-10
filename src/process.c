@@ -95,6 +95,9 @@ static int read_proc_stat(int pid, process_t *proc) {
     proc->stime = stime;
     proc->vsize = vsize;
 
+    proc->priority = priority;
+    proc->nice = nice;
+
     return 0;
 }
 

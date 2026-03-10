@@ -3,11 +3,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <signal.h>
 
 #include "memory.h"
 #include "network.h"
 #include "system.h"
 #include "process.h"
+#include "process_compare.h"
 
 // gotta split this file up at some point
 
@@ -44,6 +46,7 @@ static int history_count = 0;
 static network_stats_t previous_network_stats = {0};
 static int network_stats_initialized = 0;
 
+static int process_select_index = 0;
 static int process_scroll_offset = 0;
 
 // window definitions
@@ -52,6 +55,17 @@ static WINDOW *memory_window = NULL;
 static WINDOW *network_window = NULL;
 static WINDOW *process_window = NULL;
 static WINDOW *footer_window = NULL;
+
+typedef enum {
+    // maintain order of which they appear in the UI
+    SORT_PID,
+    SORT_USER,
+    SORT_CPU,
+    SORT_MEM,
+    SORT_COMMAND
+} process_sort_t;
+
+static process_sort_t current_process_sort = SORT_PID;
 
 void shutdown_ui(void) {
     if (cpu_window) delwin(cpu_window);
@@ -520,10 +534,10 @@ static void draw_network(void) {
     wprintw(network_window, " %-10s", down_str);
     wattroff(network_window, COLOR_PAIR(6));
    
-    char peak_download_str[16];
+    char peak_download_str[64];
     format_speed(max_download_recorded, peak_download_str, sizeof(peak_download_str));
     wattron(network_window, COLOR_PAIR(12));
-    wprintw(network_window, " peak: %s", peak_download_str);
+    wprintw(network_window, " peak: %-10s", peak_download_str);
     wattroff(network_window, COLOR_PAIR(12));
 
     wattron(network_window, COLOR_PAIR(7));
@@ -535,7 +549,7 @@ static void draw_network(void) {
     char peak_upload_str[16];
     format_speed(max_upload_recorded, peak_upload_str, sizeof(peak_upload_str));
     wattron(network_window, COLOR_PAIR(11));
-    wprintw(network_window, " peak: %s", peak_upload_str);
+    wprintw(network_window, " peak: %-10s", peak_upload_str);
     wattroff(network_window, COLOR_PAIR(11));
     
     for (int i = 0; i < history_size && i < graph_width; i++) {
@@ -581,8 +595,68 @@ static void draw_network(void) {
     }
 }
 
+void cycle_sort_mode(int direction) {
+    if (direction > 0) {
+        current_process_sort = (current_process_sort + 1) % 5;
+    } else if (direction < 0) {
+        current_process_sort = (current_process_sort - 1 + 5) % 5;
+    }
+}
+
+const char* get_sort_mode_name(void) {
+    switch (current_process_sort) {
+        case SORT_CPU: return "CPU%";
+        case SORT_MEM: return "MEM%";
+        case SORT_PID: return "PID";
+        case SORT_USER: return "USER";
+        case SORT_COMMAND: return "COMMAND";
+        default: return "PID"; // always assume PID as default
+    }
+}
+
+static void sort_process(process_list_t *processes) {
+    if (!processes || processes->count == 0) return;
+
+    int (*compare_func)(const void *, const void *) = NULL;
+
+    switch (current_process_sort) {
+        case SORT_CPU:
+            compare_func = compare_by_cpu;
+            break;
+        case SORT_MEM:
+            compare_func = compare_by_memory;
+            break;
+        case SORT_PID:
+            compare_func = compare_by_pid;
+            break;
+        case SORT_USER:
+            compare_func = compare_by_user;
+            break;
+        case SORT_COMMAND:
+            compare_func = compare_by_command;
+            break;
+    }
+
+    if (compare_func) {
+        qsort(processes->processes, processes->count, sizeof(process_t), compare_func);
+    }
+}
+
+int kill_process(const process_list_t *processes) {
+    if (!processes || processes->count <= 0) return -1;
+    if (process_select_index < 0 || process_select_index >= (int)processes->count) return -1;
+
+    const process_t *proc = &processes->processes[process_select_index];
+
+    if (kill(proc->pid, SIGTERM) == 0) {
+        return 1;
+    } else {
+        return -1;
+    }
+}
+
 void scroll_process_list(int delta) {
-    process_scroll_offset += delta;
+    process_select_index += delta;
 }
 
 static void draw_processes(const process_list_t *processes) {
@@ -590,27 +664,53 @@ static void draw_processes(const process_list_t *processes) {
    
     werase(process_window);
 
-    draw_titled_box(process_window, "PROC", 8);
+    char title[32];
+    snprintf(title, sizeof(title), "PROC [%s]", get_sort_mode_name());
+    draw_titled_box(process_window, title, 8);
     
     int win_h, win_w;
     getmaxyx(process_window, win_h, win_w);
-    
+   
+    if (processes && processes->count > 0) {
+        sort_process((process_list_t *)processes);
+    }
+
     wattron(process_window, A_BOLD | COLOR_PAIR(9));
-    mvwprintw(process_window, 1, 2, "%-7s %-10s %6s %6s  %s",
-            "PID", "USER", "CPU%", "MEM%", "COMMAND");
+    mvwprintw(process_window, 1, 2, "%-7s %-10s %3s %3s %6s %6s  %s",
+            "PID", "USER", "PR", "NI", "CPU%", "MEM%", "COMMAND");
     wattroff(process_window, A_BOLD | COLOR_PAIR(9));
 
     if (!processes || processes->count == 0) {
         mvwprintw(process_window, 3, 2, "No processes found");
+        process_select_index = 0;
+        process_scroll_offset = 0;
         return;
     }
 
+    if (process_select_index < 0) {
+        process_select_index = 0;
+    }
+    if (process_select_index >= (int)processes->count) {
+        process_select_index = (int)processes->count - 1;
+    }
+
     int max_rows = win_h - 3;
-    int max_scroll = (int)processes->count - max_rows;
     
+    if (process_select_index < process_scroll_offset) {
+        process_scroll_offset = process_select_index;
+    }
+    if (process_select_index >= process_scroll_offset + max_rows) {
+        process_scroll_offset = process_select_index - max_rows + 1;
+    }
+
+    int max_scroll = (int)processes->count - max_rows;
     if (max_scroll < 0) max_scroll = 0;
-    if (process_scroll_offset > max_scroll) process_scroll_offset = max_scroll;
-    if (process_scroll_offset < 0) process_scroll_offset = 0;
+    if (process_scroll_offset > max_scroll) {
+        process_scroll_offset = max_scroll;
+    }
+    if (process_scroll_offset < 0) {
+        process_scroll_offset = 0;
+    }
 
     for (int i = 0; i < max_rows; i++) {
         int proc_idx = process_scroll_offset + i;
@@ -618,7 +718,7 @@ static void draw_processes(const process_list_t *processes) {
 
         const process_t *proc = &processes->processes[proc_idx];
 
-        int cmd_width = win_w - 40;
+        int cmd_width = win_w - 52;
         char cmd_truncated[256];
         strncpy(cmd_truncated, proc->command, sizeof(cmd_truncated) -1);
         cmd_truncated[sizeof(cmd_truncated) - 1] = '\0';
@@ -630,8 +730,21 @@ static void draw_processes(const process_list_t *processes) {
             cmd_truncated[cmd_width] = '\0';
         }
 
-        mvwprintw(process_window, 2 + i, 2, "%-7d %-10s %6.1f %6.1f  %s",
-                proc->pid, proc->user, proc->cpu_percent, proc->mem_percent, cmd_truncated);
+        if (proc_idx == process_select_index) {
+            wattron(process_window, A_REVERSE);
+        }
+
+        mvwprintw(process_window, 2 + i, 2, "%-7d %-10s %3ld %3ld %6.1f %6.1f  %s",
+                proc->pid, proc->user, proc->priority, proc->nice, 
+                proc->cpu_percent, proc->mem_percent, cmd_truncated);
+
+        if (proc_idx == process_select_index) {
+            int current_x = getcurx(process_window);
+            for (int x = current_x; x < win_w - 2; x++) {
+                waddch(process_window, ' ');
+            }
+            wattroff(process_window, A_REVERSE);
+        }
     }
 
     if (max_scroll > 0) {
@@ -654,7 +767,11 @@ static void draw_footer(void) {
     if (!footer_window) {
         create_footer_window();
         box(footer_window, 0, 0);
-        mvwprintw(footer_window, 1, 2, "q: Quit");
+        mvwprintw(footer_window, 1, 2, "q: Quit  k: Kill Process  ");
+        waddch(footer_window, ACS_UARROW);
+        waddch(footer_window, '/');
+        waddch(footer_window, ACS_DARROW);
+        wprintw(footer_window, ": Scroll Process List");
         wnoutrefresh(footer_window);
     }
 }

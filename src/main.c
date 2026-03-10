@@ -51,6 +51,14 @@ int main(void) {
             } else if (action == INPUT_PAGE_DOWN) {
                 scroll_process_list(10);
                 refresh_process_window(&processes);
+            } else if (action == INPUT_KILL) {
+                kill_process(&processes);
+            } else if (action == INPUT_SORT_NEXT) {
+                cycle_sort_mode(1);
+                refresh_process_window(&processes);
+            } else if (action == INPUT_SORT_PREV) {
+                cycle_sort_mode(-1);
+                refresh_process_window(&processes);
             }
         }
 

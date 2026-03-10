@@ -2,7 +2,7 @@ CC 		= gcc
 CFLAGS 	= -Wall -Wextra -Werror
 LDFLAGS	 = -lncurses -lm
 
-SRC = src/main.c src/cpu.c src/memory.c src/network.c src/system.c src/process.c src/ui.c src/input.c
+SRC = src/main.c src/cpu.c src/memory.c src/network.c src/system.c src/process.c src/process_compare.c src/ui.c src/input.c
 OBJ = $(SRC:src/%.c=build/%.o)
 
 TARGET = build/exodus

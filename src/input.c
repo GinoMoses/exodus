@@ -21,7 +21,22 @@ int handle_input(void) {
         
         case KEY_NPAGE:
             return INPUT_PAGE_DOWN;
-        
+            
+        case 'k':
+        case 'K':
+            return INPUT_KILL;
+
+        case KEY_RIGHT:
+        case '>':
+        case '.':
+            return INPUT_SORT_NEXT;
+
+        case KEY_LEFT:
+        case '<':
+        case ',':
+            return INPUT_SORT_PREV;
+
+        case ERR:
         default:
             return INPUT_NONE;
     }
