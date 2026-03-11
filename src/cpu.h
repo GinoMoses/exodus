@@ -17,10 +17,10 @@ typedef struct {
 typedef struct {
     cpu_core_stats_t *cores;
     size_t count;
-} cpu_set_t;
+} cpu_stats_t;
 
-int read_cpu_stats(cpu_set_t *stats);
+int read_cpu_stats(cpu_stats_t *stats);
 double calculate_core_usage(const cpu_core_stats_t *current, const cpu_core_stats_t *previous);
-void free_cpu_set(cpu_set_t *stats);
+void free_cpu_set(cpu_stats_t *stats);
 
 #endif // CPU_H

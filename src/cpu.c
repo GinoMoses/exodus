@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-int read_cpu_stats(cpu_set_t *cpu) {
+int read_cpu_stats(cpu_stats_t *cpu) {
     FILE *file = fopen("/proc/stat", "r");
 
     if(!file) {
@@ -88,7 +88,7 @@ double calculate_core_usage(const cpu_core_stats_t *current, const cpu_core_stat
     return (double)(total_delta - idle_delta) / total_delta * 100.0;
 }
 
-void free_cpu_set(cpu_set_t *cpu) {
+void free_cpu_set(cpu_stats_t *cpu) {
     if (cpu->cores) {
         free(cpu->cores);
         cpu->cores = NULL;
