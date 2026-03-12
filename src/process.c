@@ -66,6 +66,24 @@ void calculate_process_stats(process_list_t *current, unsigned long long total_m
     processes_initialized = 1;
 }
 
+static int read_proc_comm(int pid, process_t *proc) {
+    char path[256];
+    snprintf(path, sizeof(path), "/proc/%d/comm", pid);
+
+    FILE *file = fopen(path, "r");
+    if (!file) return -1;
+
+    if (!fgets(proc->name, sizeof(proc->name), file)) {
+        fclose(file);
+        return -1;
+    }
+
+    fclose(file);
+
+    proc->name[strcspn(proc->name, "\n")] = 0;
+    return 0;
+}
+
 static int read_proc_stat(int pid, process_t *proc) {
     char path[256];
     snprintf(path, sizeof(path), "/proc/%d/stat", pid);
@@ -145,14 +163,12 @@ static int read_proc_cmdline(int pid, process_t *proc) {
     fclose(file);
 
     if (len == 0) {
-        snprintf(path, sizeof(path), "/proc/%d/comm", pid);
-        file = fopen(path, "r");
-
-        if (file) {
-            fgets(proc->command, sizeof(proc->command), file);
-            proc->command[strcspn(proc->command, "\n")] = 0;
-            fclose(file);
+        if (proc->name[0] != '\0') {
+            strncpy(proc->command, proc->name, sizeof(proc->command) - 1);
+            proc->command[sizeof(proc->command) - 1] = '\0';
         }
+
+        return 0;
     } else {
         for (size_t i = 0; i < len; i++) {
             if (proc->command[i] == '\0') proc->command[i] = ' ';
@@ -199,6 +215,7 @@ int read_processes(process_list_t *list) {
 
         if (read_proc_stat(pid, proc) != 0) continue;
         read_proc_status(pid, proc);
+        read_proc_comm(pid, proc);
         read_proc_cmdline(pid, proc);
 
         proc->cpu_percent = 0.0;

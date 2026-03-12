@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "cpu.h"
 #include "memory.h"
@@ -27,6 +28,8 @@ static size_t core_count = 0;
 void* input_thread_func(void* arg) {
     (void)arg;
 
+    char filter_buf[64] = "";
+
     while (1) {
         pthread_mutex_lock(&data_mutex);
         if (should_quit) {
@@ -35,45 +38,105 @@ void* input_thread_func(void* arg) {
         }
         pthread_mutex_unlock(&data_mutex);
 
+        if (is_filter_active()) {
+            input_action_t a = handle_input();
+
+            if (a == INPUT_FILTER_CANCEL) {
+                filter_buf[0] = '\0';
+                pthread_mutex_lock(&data_mutex);
+                set_process_filter(filter_buf);
+                set_filter_active(0);
+                refresh_process_window(&process_data);
+                pthread_mutex_unlock(&data_mutex);
+
+            } else if (a == INPUT_FILTER_ACCEPT) {
+                pthread_mutex_lock(&data_mutex);
+                set_filter_active(0);
+                refresh_process_window(&process_data);
+                pthread_mutex_unlock(&data_mutex);
+
+            } else if (a == INPUT_FILTER_BACKSPACE) {
+                size_t len = strlen(filter_buf);
+                if (len > 0) filter_buf[len - 1] = '\0';
+
+                pthread_mutex_lock(&data_mutex);
+                set_process_filter(filter_buf);
+                refresh_process_window(&process_data);
+                pthread_mutex_unlock(&data_mutex);
+
+            } else if (a == INPUT_FILTER_CHAR) {
+                char c = input_get_last_char();
+                size_t len = strlen(filter_buf);
+                if (len + 1 < sizeof(filter_buf)) {
+                    filter_buf[len] = c;
+                    filter_buf[len + 1] = '\0';
+
+                    pthread_mutex_lock(&data_mutex);
+                    set_process_filter(filter_buf);
+                    refresh_process_window(&process_data);
+                    pthread_mutex_unlock(&data_mutex);
+                }
+            }
+
+            usleep(10000);
+            continue; 
+        }
+
         input_action_t action = handle_input();
-        
+
         if (action == INPUT_QUIT) {
             pthread_mutex_lock(&data_mutex);
             should_quit = true;
             pthread_mutex_unlock(&data_mutex);
             break;
+
         } else if (action == INPUT_ARROW_UP) {
             scroll_process_list(-1);
             pthread_mutex_lock(&data_mutex);
             refresh_process_window(&process_data);
             pthread_mutex_unlock(&data_mutex);
+
         } else if (action == INPUT_ARROW_DOWN) {
             scroll_process_list(1);
             pthread_mutex_lock(&data_mutex);
             refresh_process_window(&process_data);
             pthread_mutex_unlock(&data_mutex);
+
         } else if (action == INPUT_PAGE_UP) {
             scroll_process_list(-10);
             pthread_mutex_lock(&data_mutex);
             refresh_process_window(&process_data);
             pthread_mutex_unlock(&data_mutex);
+
         } else if (action == INPUT_PAGE_DOWN) {
             scroll_process_list(10);
             pthread_mutex_lock(&data_mutex);
             refresh_process_window(&process_data);
             pthread_mutex_unlock(&data_mutex);
+
         } else if (action == INPUT_KILL) {
             pthread_mutex_lock(&data_mutex);
             kill_process(&process_data);
             pthread_mutex_unlock(&data_mutex);
+
         } else if (action == INPUT_SORT_NEXT) {
             cycle_sort_mode(1);
             pthread_mutex_lock(&data_mutex);
             refresh_process_window(&process_data);
             pthread_mutex_unlock(&data_mutex);
+
         } else if (action == INPUT_SORT_PREV) {
             cycle_sort_mode(-1);
             pthread_mutex_lock(&data_mutex);
+            refresh_process_window(&process_data);
+            pthread_mutex_unlock(&data_mutex);
+
+        } else if (action == INPUT_FILTER) {
+            strncpy(filter_buf, get_process_filter(), sizeof(filter_buf) - 1);
+            filter_buf[sizeof(filter_buf) - 1] = '\0';
+
+            pthread_mutex_lock(&data_mutex);
+            set_filter_active(1);
             refresh_process_window(&process_data);
             pthread_mutex_unlock(&data_mutex);
         }

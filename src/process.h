@@ -9,6 +9,7 @@ typedef struct {
     char state;
     double cpu_percent;
     double mem_percent;
+    char name[16];
     char command[256];
     unsigned long long utime;
     unsigned long long stime;

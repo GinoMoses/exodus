@@ -52,6 +52,29 @@ static int network_stats_initialized = 0;
 static int process_select_index = 0;
 static int process_scroll_offset = 0;
 
+static char process_filter[64] = "";
+static int filter_active = 0;
+
+void set_process_filter(const char *s) {
+    if (!s) s = "";
+    strncpy(process_filter, s, sizeof(process_filter) - 1);
+    process_filter[sizeof(process_filter) - 1] = '\0';
+    process_select_index = 0;
+    process_scroll_offset = 0;
+}
+
+const char *get_process_filter(void) {
+    return process_filter;
+}
+
+void set_filter_active(int active) {
+    filter_active = active;
+}
+
+int is_filter_active(void) {
+    return filter_active;
+}
+
 // window definitions
 static WINDOW *cpu_window = NULL;
 static WINDOW *memory_window = NULL;
@@ -166,6 +189,7 @@ void initialize_ui(void) {
     noecho();
     curs_set(0);
     nodelay(stdscr, TRUE);
+    set_escdelay(25);
     keypad(stdscr, TRUE);
 
     start_color();
@@ -210,6 +234,8 @@ void initialize_ui(void) {
         init_pair(10, COLOR_GREEN, -1);
         init_pair(11, COLOR_MAGENTA, -1);
         init_pair(12, COLOR_CYAN, -1);
+        init_pair(13, COLOR_BLUE, -1);
+        init_pair(14, COLOR_WHITE, -1);
     }
 
     refresh();
@@ -506,6 +532,7 @@ static void draw_memory(const memory_stats_t *memory, const system_stats_t *syst
         wattroff(memory_window, COLOR_PAIR(7));
         wattron(memory_window, COLOR_PAIR(8));
         wprintw(memory_window, " %ldd, %ldh, %ldm", days, hours, minutes);
+       
         y++;
         
         wattron(memory_window, COLOR_PAIR(7));
@@ -516,6 +543,7 @@ static void draw_memory(const memory_stats_t *memory, const system_stats_t *syst
         wprintw(memory_window, " %.2f %.2f %.2f",
                 system->load_1min, system->load_5min, system->load_15min);
         wattroff(memory_window, COLOR_PAIR(load_color));
+        
         y++;
 
         wattron(memory_window, COLOR_PAIR(7));
@@ -524,6 +552,7 @@ static void draw_memory(const memory_stats_t *memory, const system_stats_t *syst
         wattron(memory_window, COLOR_PAIR(8));
         wprintw(memory_window, " %d", system->process_count);
         wattroff(memory_window, COLOR_PAIR(8));
+        
         y++;
         
         wattron(memory_window, COLOR_PAIR(7));
@@ -718,6 +747,38 @@ void cycle_sort_mode(int direction) {
     }
 }
 
+static int contains_case_insensitive(const char *haystack, const char *needle) {
+    if (!needle || !needle[0]) return 1;
+    if (!haystack) return 0;
+
+    size_t needle_len = strlen(needle);
+    for (const char *p = haystack; *p; p++) {
+        size_t i = 0;
+        while (i < needle_len) {
+            char hc = p[i];
+            char nc = needle[i];
+            if (!hc) return 0;
+
+            if (hc >= 'A' && hc <= 'Z') hc = (char)(hc - 'A' + 'a');
+            if (nc >= 'A' && nc <= 'Z') nc = (char)(nc - 'A' + 'a');
+
+            if (hc != nc) break;
+            i++;
+        }
+
+        if (i == needle_len) return 1;
+    }
+
+    return 0;
+}
+
+static int proc_matches_filter(const process_t *proc) {
+    if (!process_filter[0]) return 1;
+
+    return contains_case_insensitive(proc->name, process_filter) ||
+            contains_case_insensitive(proc->command, process_filter);
+}
+
 const char* get_sort_mode_name(void) {
     switch (current_process_sort) {
         case SORT_CPU: return "CPU%";
@@ -759,15 +820,32 @@ static void sort_process(process_list_t *processes) {
 
 int kill_process(const process_list_t *processes) {
     if (!processes || processes->count <= 0) return -1;
-    if (process_select_index < 0 || process_select_index >= (int)processes->count) return -1;
 
-    const process_t *proc = &processes->processes[process_select_index];
+    int *visible = malloc(processes->count * sizeof(int));
+    if (!visible) return -1;
 
-    if (kill(proc->pid, SIGTERM) == 0) {
-        return 1;
-    } else {
+    int visible_count = 0;
+    for (size_t i = 0; i < processes->count; i++) {
+        if (proc_matches_filter(&processes->processes[i])) {
+            visible[visible_count++] = (int)i;
+        }
+    }
+
+    if (visible_count == 0) {
+        free(visible);
         return -1;
     }
+
+    if (process_select_index < 0) process_select_index = 0;
+    if (process_select_index >= visible_count) process_select_index = visible_count - 1;
+
+    int raw_index = visible[process_select_index];
+    const process_t *proc = &processes->processes[raw_index];
+
+    int rc = (kill(proc->pid, SIGTERM) == 0) ? 1 : -1;
+
+    free(visible);
+    return rc;
 }
 
 void scroll_process_list(int delta) {
@@ -779,38 +857,63 @@ static void draw_processes(const process_list_t *processes) {
    
     werase(process_window);
 
-    char title[32];
-    snprintf(title, sizeof(title), "PROC [%s]", get_sort_mode_name());
+    char title[128];
+
+    if (process_filter[0]) {
+        snprintf(title, sizeof(title), "PROC [%s] / %s", get_sort_mode_name(), process_filter);
+    } else if (filter_active) {
+        snprintf(title, sizeof(title), "PROC [%s] /", get_sort_mode_name());
+    } else {
+        snprintf(title, sizeof(title), "PROC [%s]", get_sort_mode_name());
+    }
+
     draw_titled_box(process_window, title, 13);
     
     int win_h, win_w;
     getmaxyx(process_window, win_h, win_w);
    
-    if (processes && processes->count > 0) {
-        sort_process((process_list_t *)processes);
-    }
-
-    wattron(process_window, A_BOLD | COLOR_PAIR(13));
-    mvwprintw(process_window, 1, 2, "%-7s %-10s %3s %3s %6s %6s  %s",
-            "PID", "USER", "PR", "NI", "CPU%", "MEM%", "COMMAND");
-    wattroff(process_window, A_BOLD | COLOR_PAIR(13));
-
     if (!processes || processes->count == 0) {
         mvwprintw(process_window, 3, 2, "No processes found");
         process_select_index = 0;
         process_scroll_offset = 0;
         return;
     }
+    
+    sort_process((process_list_t *)processes);
 
-    if (process_select_index < 0) {
+    int *visible = malloc(processes->count * sizeof(int));
+    if (!visible) {
+        mvwprintw(process_window, 3, 2, "Error allocating memory");
+        return;
+    }
+
+    int visible_count = 0;
+    for (size_t i = 0; i < processes->count; i++) {
+        if (proc_matches_filter(&processes->processes[i])) {
+            visible[visible_count++] = (int)i;
+        }
+    }
+
+    wattron(process_window, A_BOLD | COLOR_PAIR(13));
+    mvwprintw(process_window, 1, 2, 
+            "%-7s %-10s %3s %3s %6s %6s %-16s  %s",
+            "PID", "USER", "PR", "NI", "CPU%", "MEM%", "NAME", "COMMAND");
+    wattroff(process_window, A_BOLD | COLOR_PAIR(13));
+    
+    if (visible_count == 0) {
+        mvwprintw(process_window, 3, 2, "No matches");
         process_select_index = 0;
+        process_scroll_offset = 0;
+        free(visible);
+        return;
     }
-    if (process_select_index >= (int)processes->count) {
-        process_select_index = (int)processes->count - 1;
-    }
+
+    if (process_select_index < 0) process_select_index = 0;
+    if (process_select_index >= visible_count) process_select_index = visible_count - 1;
 
     int max_rows = win_h - 3;
-    
+    if (max_rows < 1) max_rows = 1;
+
     if (process_select_index < process_scroll_offset) {
         process_scroll_offset = process_select_index;
     }
@@ -818,8 +921,9 @@ static void draw_processes(const process_list_t *processes) {
         process_scroll_offset = process_select_index - max_rows + 1;
     }
 
-    int max_scroll = (int)processes->count - max_rows;
+    int max_scroll = visible_count - max_rows;
     if (max_scroll < 0) max_scroll = 0;
+
     if (process_scroll_offset > max_scroll) {
         process_scroll_offset = max_scroll;
     }
@@ -828,27 +932,29 @@ static void draw_processes(const process_list_t *processes) {
     }
 
     for (int i = 0; i < max_rows; i++) {
-        int proc_idx = process_scroll_offset + i;
-        if (proc_idx >= (int)processes->count) break;
+        int vis_idx = process_scroll_offset + i;
+        if (vis_idx >= visible_count) break;
 
-        const process_t *proc = &processes->processes[proc_idx];
+        int raw_idx = visible[vis_idx];
+        const process_t *proc = &processes->processes[raw_idx];
 
-        int cmd_width = win_w - 52;
-        if (cmd_width < 8) cmd_width = 10;
+        int fixed_cols = 7 + 1 + 10 + 1 + 3 + 1 + 3 + 1 + 6 + 1 + 6 + 1 + 16 + 2;
+        int cmd_width = win_w - 2 - fixed_cols;
+        if (cmd_width < 8) cmd_width = 8;
         if (cmd_width > 255) cmd_width = 255;
-        
+
         char cmd_truncated[256];
-        strncpy(cmd_truncated, proc->command, sizeof(cmd_truncated) -1);
+        strncpy(cmd_truncated, proc->command, sizeof(cmd_truncated) - 1);
         cmd_truncated[sizeof(cmd_truncated) - 1] = '\0';
 
-        if ((int)strlen(cmd_truncated) > cmd_width) {
+        if (cmd_width >= 4 && (int)strlen(cmd_truncated) > cmd_width) {
             cmd_truncated[cmd_width - 3] = '.';
             cmd_truncated[cmd_width - 2] = '.';
             cmd_truncated[cmd_width - 1] = '.';
             cmd_truncated[cmd_width] = '\0';
         }
 
-        if (proc_idx == process_select_index) {
+        if (vis_idx == process_select_index) {
             wattron(process_window, A_REVERSE | A_BOLD);
         }
 
@@ -871,11 +977,19 @@ static void draw_processes(const process_list_t *processes) {
         wprintw(process_window, "%6.1f", proc->mem_percent);
         wattroff(process_window, COLOR_PAIR(mem_pair));
 
-        if (proc_idx != process_select_index) wattron(process_window, COLOR_PAIR(14));
-        wprintw(process_window, "  %s", cmd_truncated);
-        if (proc_idx != process_select_index) wattroff(process_window, COLOR_PAIR(14));
+        wprintw(process_window, " ");
 
-        if (proc_idx == process_select_index) {
+        wattron(process_window, COLOR_PAIR(4));
+        wprintw(process_window, "%-16.16s", proc->name[0] ? proc->name : "?");
+        wattroff(process_window, COLOR_PAIR(4));
+
+        wprintw(process_window, "  ");
+
+        if (vis_idx != process_select_index) wattron(process_window, COLOR_PAIR(14));
+        wprintw(process_window, "%s", cmd_truncated);
+        if (vis_idx != process_select_index) wattroff(process_window, COLOR_PAIR(14));
+
+        if (vis_idx == process_select_index) {
             int current_x = getcurx(process_window);
             for (int x = current_x; x < win_w - 2; x++) {
                 waddch(process_window, ' ');
@@ -892,6 +1006,8 @@ static void draw_processes(const process_list_t *processes) {
                     process_scroll_offset + max_rows : (int)processes->count,
                 processes->count);
     }
+
+    free(visible);
 }
 
 void refresh_process_window(const process_list_t *processes) {
@@ -902,7 +1018,7 @@ void refresh_process_window(const process_list_t *processes) {
 
 static void draw_footer(void) {
     const char *help = 
-        "[q] Quit  [k] Kill  [\u2191 \u2193] Select Process  [< >] Sort By";
+        "[q] Quit  [k] Kill  [\u2191 \u2193] Select Process  [< >] Sort By  [/] Filter";
 
     int term_h, term_w;
     getmaxyx(stdscr, term_h, term_w);

@@ -6,6 +6,11 @@
 #include "system.h"
 #include "process.h"
 
+void set_process_filter(const char *s);
+const char *get_process_filter(void);
+void set_filter_active(int active);
+int is_filter_active(void);
+
 void shutdown_ui(void);
 void initialize_ui(void);
 void scroll_process_list(int offset);
