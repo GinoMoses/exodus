@@ -28,7 +28,9 @@
 #define BOX_BOTTOM_LEFT 0x2514
 #define BOX_BOTTOM_RIGHT 0x2518
 
-#define CPU_USAGE_COLOR(p) ((p) < 50.0 ? 1 : ((p) < 80.0 ? 2 : 3)) 
+#define PCT_COLOR(p) ((p) < 50.0 ? 1 : ((p) < 80.0 ? 2 : 3))
+#define CPU_USAGE_COLOR(p) ((p) < 50.0 ? 1 : ((p) < 80.0 ? 2 : 3))
+
 #define CPU_COLUMNS 4
 #define PERCENT_WIDTH 7 
 #define CELL_PADDING 2
@@ -55,7 +57,6 @@ static WINDOW *cpu_window = NULL;
 static WINDOW *memory_window = NULL;
 static WINDOW *network_window = NULL;
 static WINDOW *process_window = NULL;
-static WINDOW *footer_window = NULL;
 
 typedef enum {
     // maintain order of which they appear in the UI
@@ -73,7 +74,6 @@ void shutdown_ui(void) {
     if (memory_window) delwin(memory_window);
     if (network_window) delwin(network_window);
     if (process_window) delwin(process_window);
-    if (footer_window) delwin(footer_window);
     
     if (download_history) free(download_history);
     if (upload_history) free(upload_history);
@@ -103,7 +103,7 @@ static void create_memory_window(void) {
     (void)cpu_win_w; // unused
 
     int memory_height = 12;
-    int memory_y = START_Y + cpu_win_h + 1;
+    int memory_y = START_Y + cpu_win_h;
     
     int available_width = term_w - 4;
     int gap = 2;
@@ -123,7 +123,7 @@ static void create_network_window(void) {
     (void)cpu_win_w;
 
     int network_height = 12;
-    int network_y = START_Y + cpu_win_h + 1;
+    int network_y = START_Y + cpu_win_h;
     
     int mem_win_w;
     getmaxyx(memory_window, network_height, mem_win_w);
@@ -150,23 +150,12 @@ static void create_process_window(void) {
     getmaxyx(cpu_window, cpu_win_h, cpu_win_w);
     (void)cpu_win_w; // unused
 
-    int proc_y = 1 + cpu_win_h + mem_win_h + 2;
-    int proc_height = term_h - proc_y - 4;
+    int proc_y = START_Y + cpu_win_h + mem_win_h;
+    int proc_height = term_h - proc_y - 1;
     int proc_width = term_w - 4;
 
     if (process_window) delwin(process_window);
     process_window = newwin(proc_height, proc_width, proc_y, START_X);
-}
-
-static void create_footer_window(void) {
-    int term_h, term_w;
-    getmaxyx(stdscr, term_h, term_w);
-
-    int footer_height = 3;
-    int footer_y = term_h - footer_height;
-
-    if (footer_window) delwin(footer_window);
-    footer_window = newwin(footer_height, term_w - 4, footer_y, START_X);
 }
 
 void initialize_ui(void) {
@@ -195,8 +184,8 @@ void initialize_ui(void) {
         // memory
         init_pair(7, 75, -1);
         init_pair(8, 39, -1);
-        init_pair(9, 33, -1);
-        init_pair(10, 27, -1);
+        init_pair(9, 27, -1);
+        init_pair(10, 21, -1);
 
         // network
         init_pair(11, 170, -1);
@@ -206,6 +195,7 @@ void initialize_ui(void) {
         init_pair(13, 51, -1);
 
         init_pair(5, 237, -1);
+        init_pair(14, 241, -1);
     } else {
         // whatever man
         init_pair(1, COLOR_GREEN, -1);
@@ -257,47 +247,66 @@ static void draw_bar(WINDOW *win, double cpu_usage, int bar_width) {
 }
 
 static void draw_memory_bar(WINDOW *win, const memory_stats_t *memory, int bar_width) {
-    // seperate function for memory to color buffers, cached, and used differently
-    double used_filled = memory->total > 0 ? 
-        (int)((double)memory->used / memory->total * bar_width) : 0.0;
-    double buffer_end = memory->total > 0 ? 
-        (int)((double)(memory->used + memory->buffers) / memory->total * bar_width) : 0.0;
-    double cache_end = memory->total > 0 ? 
-        (int)((double)(memory->used + memory->buffers + memory->cached) / memory->total * bar_width) : 0.0;
-    
-    for (int i = 0; i < bar_width; i++) {
-        if (i < used_filled) {
-            if (COLORS >= 256) {
-                init_pair(20, 39, -1);
-                wattron(win, COLOR_PAIR(8));
-            } else {
-                wattron(win, COLOR_PAIR(8));
+     if (!memory || memory->total == 0 || bar_width <= 0) return;
+
+    unsigned long long used = memory->used;
+    unsigned long long buffers = memory->buffers;
+    unsigned long long cached  = memory->cached;
+
+    unsigned long long sum = used + buffers + cached;
+    if (sum > memory->total) {
+        unsigned long long extra = sum - memory->total;
+
+        // trim cached, then buffers, then used
+        if (cached >= extra) cached -= extra;
+        else {
+            extra -= cached;
+            cached = 0;
+            if (buffers >= extra) buffers -= extra;
+            else {
+                extra -= buffers;
+                buffers = 0;
+                used = (used > extra) ? (used - extra) : 0;
             }
-            waddch(win, FULL_BLOCK);
-            wattroff(win, COLOR_PAIR(COLORS >= 256 ? 20 : 4));
-        } else if (i < buffer_end) {
-            if (COLORS >= 256) {
-                init_pair(21, 33, -1);
-                wattron(win, COLOR_PAIR(9));
-            } else {
-                wattron(win, COLOR_PAIR(9));
-            }
-            waddch(win, FULL_BLOCK);
-            wattroff(win, COLOR_PAIR(COLORS >= 256 ? 21 : 6));
-        } else if (i < cache_end) {
-            if (COLORS >= 256) {
-                init_pair(22, 27, -1);
-                wattron(win, COLOR_PAIR(10));
-            } else {
-                wattron(win, COLOR_PAIR(10));
-            }
-            waddch(win, FULL_BLOCK);
-            wattroff(win, COLOR_PAIR(COLORS >= 256 ? 22 : 4));
-        } else {
-            wattron(win, COLOR_PAIR(5));
-            waddch(win, FULL_BLOCK);
-            wattroff(win, COLOR_PAIR(5));
         }
+    }
+
+    int used_len = (int)((double)used / memory->total * bar_width);
+    int buffers_len = (int)((double)buffers / memory->total * bar_width);
+    int cached_len = (int)((double)cached / memory->total * bar_width);
+
+    if (used > 0 && used_len == 0) used_len = 1;
+    if (buffers > 0 && buffers_len == 0) buffers_len = 1;
+    if (cached > 0 && cached_len == 0) cached_len = 1;
+
+    while (used_len + buffers_len + cached_len > bar_width) {
+        if (cached_len > 0) cached_len--;
+        else if (buffers_len > 0) buffers_len--;
+        else if (used_len > 0) used_len--;
+        else break;
+    }
+
+    int free_len = bar_width - (used_len + buffers_len + cached_len);
+
+    for (int i = 0; i < used_len; i++) {
+        wattron(win, COLOR_PAIR(8));
+        waddch(win, FULL_BLOCK);
+        wattroff(win, COLOR_PAIR(8));
+    }
+    for (int i = 0; i < buffers_len; i++) {
+        wattron(win, COLOR_PAIR(9));
+        waddch(win, FULL_BLOCK);
+        wattroff(win, COLOR_PAIR(9));
+    }
+    for (int i = 0; i < cached_len; i++) {
+        wattron(win, COLOR_PAIR(10));
+        waddch(win, FULL_BLOCK);
+        wattroff(win, COLOR_PAIR(10));
+    }
+    for (int i = 0; i < free_len; i++) {
+        wattron(win, COLOR_PAIR(5));
+        waddch(win, FULL_BLOCK);
+        wattroff(win, COLOR_PAIR(5));
     }
 }
 
@@ -337,7 +346,7 @@ static void draw_titled_box(WINDOW *win, const char *title, int color_pair) {
         mvwprintw(win, 0, 2, " %s ", title);
         wattroff(win, A_BOLD);
     }
-    wattroff(win, COLOR_PAIR(5));
+    wattroff(win, COLOR_PAIR(color_pair));
 }
 
 static void draw_cpu(double *cpu_usage, size_t core_count) {
@@ -459,18 +468,70 @@ static void draw_memory(const memory_stats_t *memory, const system_stats_t *syst
         mvwprintw(memory_window, y, info_x, "%s / %s", swap_used_str, swap_total_str);
     }
 
+    y++;
+
+    int legend_x = x;
+    wmove(memory_window, y, legend_x);
+
+    wattron(memory_window, COLOR_PAIR(8));
+    waddch(memory_window, FULL_BLOCK);
+    wattroff(memory_window, COLOR_PAIR(8));
+    wprintw(memory_window, " used  ");
+
+    wattron(memory_window, COLOR_PAIR(9));
+    waddch(memory_window, FULL_BLOCK);
+    wattroff(memory_window, COLOR_PAIR(9));
+    wprintw(memory_window, " buffers  ");
+
+    wattron(memory_window, COLOR_PAIR(10));
+    waddch(memory_window, FULL_BLOCK);
+    wattroff(memory_window, COLOR_PAIR(10));
+    wprintw(memory_window, " cached");
+
     if (system) {
-        y += 2;
+        y++;
+
+        wattron(memory_window, COLOR_PAIR(5));
+        mvwhline(memory_window, y++, x, ACS_HLINE, win_w - 4);
+        wattroff(memory_window, COLOR_PAIR(5));
 
         long days = system->uptime_seconds / 86400;
         long hours = (system->uptime_seconds % 86400) / 3600;
         long minutes = (system->uptime_seconds % 3600) / 60;
 
-        mvwprintw(memory_window, y++, x, "Uptime: %ldd %ldh %ldm", days, hours, minutes);
-        mvwprintw(memory_window, y++, x, "Load: %.2f %.2f %2.f",
+        y++;
+
+        wattron(memory_window, COLOR_PAIR(7));
+        mvwprintw(memory_window, y, x, "Uptime:");
+        wattroff(memory_window, COLOR_PAIR(7));
+        wattron(memory_window, COLOR_PAIR(8));
+        wprintw(memory_window, " %ldd, %ldh, %ldm", days, hours, minutes);
+        y++;
+        
+        wattron(memory_window, COLOR_PAIR(7));
+        mvwprintw(memory_window, y, x, "Load: ");
+        wattroff(memory_window, COLOR_PAIR(7));
+        int load_color = system->load_1min <   2.0 ? 1 : (system->load_1min < 4.0 ? 2 : 3);
+        wattron(memory_window, COLOR_PAIR(load_color));
+        wprintw(memory_window, " %.2f %.2f %.2f",
                 system->load_1min, system->load_5min, system->load_15min);
-        mvwprintw(memory_window, y++, x, "Procs: %d", system->process_count);
-        mvwprintw(memory_window, y++, x, "Kernel: %s", system->kernel_version);
+        wattroff(memory_window, COLOR_PAIR(load_color));
+        y++;
+
+        wattron(memory_window, COLOR_PAIR(7));
+        mvwprintw(memory_window, y, x, "Procs:");
+        wattroff(memory_window, COLOR_PAIR(7));
+        wattron(memory_window, COLOR_PAIR(8));
+        wprintw(memory_window, " %d", system->process_count);
+        wattroff(memory_window, COLOR_PAIR(8));
+        y++;
+        
+        wattron(memory_window, COLOR_PAIR(7));
+        mvwprintw(memory_window, y, x, "Kernel:");
+        wattroff(memory_window, COLOR_PAIR(7));
+        wattron(memory_window, COLOR_PAIR(10));  // darker/dimmer
+        wprintw(memory_window, " %s", system->kernel_version);
+        wattroff(memory_window, COLOR_PAIR(10));
     }
 }
 
@@ -729,10 +790,10 @@ static void draw_processes(const process_list_t *processes) {
         sort_process((process_list_t *)processes);
     }
 
-    wattron(process_window, A_BOLD | COLOR_PAIR(9));
+    wattron(process_window, A_BOLD | COLOR_PAIR(13));
     mvwprintw(process_window, 1, 2, "%-7s %-10s %3s %3s %6s %6s  %s",
             "PID", "USER", "PR", "NI", "CPU%", "MEM%", "COMMAND");
-    wattroff(process_window, A_BOLD | COLOR_PAIR(9));
+    wattroff(process_window, A_BOLD | COLOR_PAIR(13));
 
     if (!processes || processes->count == 0) {
         mvwprintw(process_window, 3, 2, "No processes found");
@@ -773,6 +834,9 @@ static void draw_processes(const process_list_t *processes) {
         const process_t *proc = &processes->processes[proc_idx];
 
         int cmd_width = win_w - 52;
+        if (cmd_width < 8) cmd_width = 10;
+        if (cmd_width > 255) cmd_width = 255;
+        
         char cmd_truncated[256];
         strncpy(cmd_truncated, proc->command, sizeof(cmd_truncated) -1);
         cmd_truncated[sizeof(cmd_truncated) - 1] = '\0';
@@ -785,19 +849,38 @@ static void draw_processes(const process_list_t *processes) {
         }
 
         if (proc_idx == process_select_index) {
-            wattron(process_window, A_REVERSE);
+            wattron(process_window, A_REVERSE | A_BOLD);
         }
 
-        mvwprintw(process_window, 2 + i, 2, "%-7d %-10s %3ld %3ld %6.1f %6.1f  %s",
-                proc->pid, proc->user, proc->priority, proc->nice, 
-                proc->cpu_percent, proc->mem_percent, cmd_truncated);
+        int row_y = 2 + i;
+        int col_x = 2;
+
+        wmove(process_window, row_y, col_x);
+        wprintw(process_window, "%-7d %-10s %3ld %3ld ",
+                proc->pid, proc->user, proc->priority, proc->nice);
+
+        int cpu_pair = PCT_COLOR(proc->cpu_percent);
+        wattron(process_window, COLOR_PAIR(cpu_pair));
+        wprintw(process_window, "%6.1f", proc->cpu_percent);
+        wattroff(process_window, COLOR_PAIR(cpu_pair));
+
+        wprintw(process_window, " ");
+
+        int mem_pair = PCT_COLOR(proc->mem_percent);
+        wattron(process_window, COLOR_PAIR(mem_pair));
+        wprintw(process_window, "%6.1f", proc->mem_percent);
+        wattroff(process_window, COLOR_PAIR(mem_pair));
+
+        if (proc_idx != process_select_index) wattron(process_window, COLOR_PAIR(14));
+        wprintw(process_window, "  %s", cmd_truncated);
+        if (proc_idx != process_select_index) wattroff(process_window, COLOR_PAIR(14));
 
         if (proc_idx == process_select_index) {
             int current_x = getcurx(process_window);
             for (int x = current_x; x < win_w - 2; x++) {
                 waddch(process_window, ' ');
             }
-            wattroff(process_window, A_REVERSE);
+            wattroff(process_window, A_REVERSE | A_BOLD);
         }
     }
 
@@ -818,17 +901,24 @@ void refresh_process_window(const process_list_t *processes) {
 }
 
 static void draw_footer(void) {
-    if (!footer_window) {
-        create_footer_window();
-        box(footer_window, 0, 0);
-        mvwprintw(footer_window, 1, 2, "[q]: Quit  k: Kill Process  [");
-        waddch(footer_window, ACS_UARROW);
-        waddch(footer_window, ' ');
-        waddch(footer_window, ACS_DARROW);
-        wprintw(footer_window, "]: Scroll Process List  ");
-        wprintw(footer_window, "[< >]: Change Sort  ");
-        wnoutrefresh(footer_window);
-    }
+    const char *help = 
+        "[q] Quit  [k] Kill  [\u2191 \u2193] Select Process  [< >] Sort By";
+
+    int term_h, term_w;
+    getmaxyx(stdscr, term_h, term_w);
+
+    int y = term_h - 1;
+    if (y < 0) return;
+
+    move(y, 0);
+    clrtoeol();
+
+    int x = (int)((term_w - (int)strlen(help)) / 2);
+    if (x < 0) x = 0;
+
+    attron(COLOR_PAIR(14));
+    mvprintw(y, x, "%s", help);
+    attroff(COLOR_PAIR(14));
 }
 
 void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory, 
@@ -848,6 +938,5 @@ void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memor
     wnoutrefresh(memory_window);
     wnoutrefresh(network_window);
     wnoutrefresh(process_window);
-    wnoutrefresh(footer_window);
     doupdate();
 }
