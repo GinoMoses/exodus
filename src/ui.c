@@ -20,14 +20,6 @@
 #define DOWN_ARROW ACS_DARROW
 #define UP_ARROW ACS_UARROW
 
-// unicode for borders
-#define BOX_HORIZONTAL 0x2500
-#define BOX_VERTICAL 0x2502
-#define BOX_TOP_LEFT 0x250C
-#define BOX_TOP_RIGHT 0x2510
-#define BOX_BOTTOM_LEFT 0x2514
-#define BOX_BOTTOM_RIGHT 0x2518
-
 #define PCT_COLOR(p) ((p) < 50.0 ? 1 : ((p) < 80.0 ? 2 : 3))
 #define CPU_USAGE_COLOR(p) ((p) < 50.0 ? 1 : ((p) < 80.0 ? 2 : 3))
 
