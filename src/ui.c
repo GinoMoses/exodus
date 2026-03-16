@@ -1,3 +1,4 @@
+#include "ui.h"
 #include <ncurses.h>
 #include <unistd.h>
 #include <string.h>
@@ -26,7 +27,7 @@
 #define CPU_COLUMNS 4
 #define PERCENT_WIDTH 7 
 #define CELL_PADDING 2
-#define START_Y 1
+#define START_Y 0
 #define START_X 2
 
 #define NETWORK_HISTORY_MAX 120
@@ -66,6 +67,9 @@ void set_filter_active(int active) {
 int is_filter_active(void) {
     return filter_active;
 }
+
+static int last_term_w = 0;
+static int last_term_h = 0;
 
 // window definitions
 static WINDOW *cpu_window = NULL;
@@ -173,7 +177,7 @@ static void create_process_window(void) {
     process_window = newwin(proc_height, proc_width, proc_y, START_X);
 }
 
-void initialize_ui(void) {
+void initialize_ui(size_t core_count) {
     setlocale(LC_ALL, "");
 
     initscr();
@@ -229,6 +233,13 @@ void initialize_ui(void) {
         init_pair(13, COLOR_BLUE, -1);
         init_pair(14, COLOR_WHITE, -1);
     }
+
+    getmaxyx(stdscr, last_term_h, last_term_w);
+
+    create_cpu_window(core_count);
+    create_memory_window();
+    create_network_window();
+    create_process_window();
 
     refresh();
 }
@@ -1027,6 +1038,19 @@ static void draw_footer(void) {
     attron(COLOR_PAIR(14));
     mvprintw(y, x, "%s", help);
     attroff(COLOR_PAIR(14));
+}
+
+int should_resize_windows(void) {
+    int term_h, term_w;
+    getmaxyx(stdscr, term_h, term_w);
+
+    if (term_h != last_term_h || term_w != last_term_w) {
+        last_term_h = term_h;
+        last_term_w = term_w;
+        return 1;
+    }
+
+    return 0;
 }
 
 void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory, 

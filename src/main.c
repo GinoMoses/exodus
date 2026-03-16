@@ -36,6 +36,11 @@ void* input_thread_func(void* arg) {
             pthread_mutex_unlock(&data_mutex);
             break;
         }
+
+        if (should_resize_windows()) {
+            initialize_ui(core_count);
+        }
+
         pthread_mutex_unlock(&data_mutex);
 
         if (is_filter_active()) {
@@ -159,7 +164,7 @@ int main(void) {
     core_count = previous_cpu.count;
     cpu_usage = calloc(core_count, sizeof(double));
 
-    initialize_ui();
+    initialize_ui(core_count);
     
     pthread_t input_thread;
     if (pthread_create(&input_thread, NULL, input_thread_func, NULL) != 0) {

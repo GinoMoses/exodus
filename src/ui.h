@@ -12,7 +12,7 @@ void set_filter_active(int active);
 int is_filter_active(void);
 
 void shutdown_ui(void);
-void initialize_ui(void);
+void initialize_ui(size_t core_count);
 void scroll_process_list(int offset);
 void refresh_process_window(const process_list_t *processes);
 void cycle_sort_mode(int direction);
@@ -20,5 +20,6 @@ const char* get_process_sort_mode_name(void);
 int kill_process(const process_list_t *processes);
 void update_ui(double *cpu_usage, size_t core_count, const memory_stats_t *memory, const network_stats_t *network, 
         const system_stats_t *system, const process_list_t *processes);
+int should_resize_windows(void);
 
 #endif // UI_H

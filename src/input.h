@@ -19,7 +19,6 @@ typedef enum {
 } input_action_t;
 
 int handle_input(void);
-
 char input_get_last_char(void);
 
 #endif // INPUT_H

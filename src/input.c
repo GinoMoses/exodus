@@ -2,6 +2,7 @@
 
 #include "input.h"
 
+
 static char last_char = '\0';
 
 int handle_input(void) {
