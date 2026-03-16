@@ -942,19 +942,18 @@ static void draw_processes(const process_list_t *processes) {
         const process_t *proc = &processes->processes[raw_idx];
 
         int fixed_cols = 7 + 1 + 10 + 1 + 3 + 1 + 3 + 1 + 6 + 1 + 6 + 1 + 16 + 2;
-        int cmd_width = win_w - 2 - fixed_cols;
+        int cmd_width = win_w - 2 - fixed_cols - 1;
         if (cmd_width < 8) cmd_width = 8;
         if (cmd_width > 255) cmd_width = 255;
 
         char cmd_truncated[256];
-        strncpy(cmd_truncated, proc->command, sizeof(cmd_truncated) - 1);
-        cmd_truncated[sizeof(cmd_truncated) - 1] = '\0';
+        strncpy(cmd_truncated, proc->command, cmd_width);
+        cmd_truncated[cmd_width] = '\0';
 
-        if (cmd_width >= 4 && (int)strlen(cmd_truncated) > cmd_width) {
+        if ((int)strlen(proc->command) > cmd_width && cmd_width > 3) {
             cmd_truncated[cmd_width - 3] = '.';
             cmd_truncated[cmd_width - 2] = '.';
             cmd_truncated[cmd_width - 1] = '.';
-            cmd_truncated[cmd_width] = '\0';
         }
 
         if (vis_idx == process_select_index) {
