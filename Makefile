@@ -1,5 +1,5 @@
 CC 		= gcc
-CFLAGS 	= -Wall -Wextra -Werror -pthread
+CFLAGS 	= -Wall -Wextra -Werror -pthread -std=c99 -D_DEFAULT_SOURCE
 LDFLAGS	 = -lncursesw -lm -pthread
 
 SRC = src/main.c src/cpu.c src/memory.c src/network.c src/system.c src/process.c src/process_compare.c src/ui.c src/input.c
