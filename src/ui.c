@@ -191,48 +191,22 @@ void initialize_ui(size_t core_count) {
     start_color();
     assume_default_colors(-1, COLOR_BLACK);
     use_default_colors();
-
-    // color scheme
-    if (COLORS >= 256) {
-        // cpu
-        init_pair(1, 41, -1);
-        init_pair(2, 185, -1);
-        init_pair(3, 208, -1);
-        init_pair(4, 77, -1);
-        init_pair(6, 157, -1);
-
-        // memory
-        init_pair(7, 75, -1);
-        init_pair(8, 39, -1);
-        init_pair(9, 27, -1);
-        init_pair(10, 21, -1);
-
-        // network
-        init_pair(11, 170, -1);
-        init_pair(12, 141, -1);
-
-        // process
-        init_pair(13, 51, -1);
-
-        init_pair(5, 237, -1);
-        init_pair(14, 241, -1);
-    } else {
-        // whatever man
-        init_pair(1, COLOR_GREEN, -1);
-        init_pair(2, COLOR_YELLOW, -1);
-        init_pair(3, COLOR_RED, -1);
-        init_pair(4, COLOR_BLUE, -1);
-        init_pair(5, COLOR_BLACK, -1);
-        init_pair(6, COLOR_CYAN, -1);
-        init_pair(7, COLOR_MAGENTA, -1);
-        init_pair(8, COLOR_GREEN, -1);
-        init_pair(9, COLOR_GREEN, -1);
-        init_pair(10, COLOR_GREEN, -1);
-        init_pair(11, COLOR_MAGENTA, -1);
-        init_pair(12, COLOR_CYAN, -1);
-        init_pair(13, COLOR_BLUE, -1);
-        init_pair(14, COLOR_WHITE, -1);
-    }
+    
+    init_pair(1, COLOR_GREEN, -1);
+    init_pair(2, COLOR_YELLOW, -1);
+    init_pair(3, COLOR_RED, -1);
+    init_pair(4, COLOR_CYAN, -1);
+    init_pair(6, COLOR_BLUE, -1);
+    init_pair(7, COLOR_MAGENTA, -1);
+    init_pair(8, COLOR_CYAN, -1);
+    init_pair(9, COLOR_BLUE, -1);
+    init_pair(10, COLOR_BLUE, -1);
+    init_pair(11, COLOR_MAGENTA, -1);
+    init_pair(12, COLOR_CYAN, -1);
+    init_pair(13, COLOR_CYAN, -1);
+    
+    init_pair(5, -1, -1);
+    init_pair(14, -1, -1);
 
     getmaxyx(stdscr, last_term_h, last_term_w);
 
